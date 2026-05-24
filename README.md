@@ -1,228 +1,51 @@
-# hello-itential
+# shared-lab-iag-assets
 
-<!--
-MAINTAINER: Add badges for your project. Common badges include:
-- Build status (GitHub Actions)
-- Code coverage
-- License
-- Version/Release
-- Downloads
+Assets for the Forcepoint shared-lab IAG5 server. Edit [`import.yml`](import.yml), merge to `main`, the pipeline reconciles IAG5 to match.
 
-Example badges (update URLs for your project):
+## How it works
 
-[![Build Status](https://github.com/itential/hello-itential/actions/workflows/ci.yml/badge.svg)](https://github.com/itential/hello-itential/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/itential/hello-itential)](https://github.com/itential/hello-itential/releases)
--->
-
-[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-
-<!--
-MAINTAINER: Write a clear, concise description of what your project does.
-This should be 2-3 sentences that answer:
-- What problem does this solve?
-- Who is it for?
-- What makes it useful?
-
-Example:
-"A high-performance CLI tool for managing network device configurations.
-Designed for network engineers who need to automate bulk changes across
-multiple vendors with built-in validation and rollback support."
--->
-
-A brief description of what hello-itential does and why it exists.
-
-## Features
-
-<!--
-MAINTAINER: List 4-6 key features that highlight what makes your project valuable.
-Use action-oriented language and be specific about benefits.
-
-Example:
-- **Fast execution** - Processes 1000+ devices in parallel
-- **Multi-vendor support** - Works with Cisco, Juniper, Arista, and more
-- **Safe by default** - Dry-run mode and automatic rollback on failures
-- **Extensible** - Plugin system for custom device types
--->
-
-- **Feature one** - Brief description of the feature
-- **Feature two** - Brief description of the feature
-- **Feature three** - Brief description of the feature
-- **Feature four** - Brief description of the feature
-
-## Requirements
-
-<!--
-MAINTAINER: List all prerequisites needed to use your project.
-Be specific about versions where it matters.
-
-Examples by tech stack:
-- Python: Python 3.10+, pip or uv
-- Node.js: Node.js 18+, npm 9+
-- Go: Go 1.21+
-- Rust: Rust 1.70+, cargo
--->
-
-- Requirement 1 (e.g., Python 3.10+)
-- Requirement 2 (e.g., specific system dependency)
-
-## Installation
-
-<!--
-MAINTAINER: Provide clear installation instructions for all supported methods.
-Order from simplest/most common to advanced. Include copy-pasteable commands.
-
-Common patterns:
-- Package managers (pip, npm, brew, cargo)
-- Binary releases
-- Building from source
--->
-
-### Quick Install
-
-```bash
-# Add your primary installation command here
-# Examples:
-# pip install hello-itential
-# npm install -g hello-itential
-# brew install itential/tap/hello-itential
-# go install github.com/itential/hello-itential@latest
+```
+edit import.yml → PR → merge to main
+        │
+        ▼
+GitHub Actions (.github/workflows/deploy-iag5.yml)
+        │  OIDC → assume gha-deploy-iag5 in account 623933009299
+        ▼
+AWS SSM send-command → IAG5 EC2 (i-0dcf9db60fabecc0d)
+        │
+        ▼
+/opt/gateway/deploy.sh fetches import.yml at the merged commit
+and replays repositories/services into iagctl (client mode).
 ```
 
-### From Source
+No inbound port on the IAG5 box. iagctl auth and certs stay on the host.
 
-```bash
-git clone https://github.com/itential/hello-itential.git
-cd hello-itential
+## Adding an asset
 
-# Add build/install commands for your tech stack
-# Examples:
-# pip install -e .
-# npm install && npm run build
-# go build -o hello-itential .
-# cargo build --release
-```
+1. Drop the asset files in this repo (e.g. `my-feature/playbook.yml`).
+2. Add the service to `import.yml`:
+   ```yaml
+   services:
+     - name: my-feature
+       type: ansible-playbook
+       repository: shared-lab-iag-assets
+       working-directory: my-feature
+       playbooks: [playbook.yml]
+   ```
+3. Open a PR. Merge to `main` → IAG5 updates within ~30s.
 
-## Quick Start
+Supported `type` values: `ansible-playbook`, `python-script`, `opentofu-plan`, `executable`. See `iagctl create service <type> --help` on the box for full flag listings.
 
-<!--
-MAINTAINER: Show the simplest possible usage that demonstrates value.
-This should be a "hello world" equivalent that works in under a minute.
-Include expected output where helpful.
--->
+## Files
 
-```bash
-# Show the most basic usage example
-hello-itential --help
-```
+- [`import.yml`](import.yml) — declarative state, the only file most changes touch
+- [`.github/workflows/deploy-iag5.yml`](.github/workflows/deploy-iag5.yml) — CI pipeline
+- [`scripts/deploy.sh`](scripts/deploy.sh) — what runs on the IAG5 box (also installed at `/opt/gateway/deploy.sh`)
+- [`scripts/aws-oidc-bootstrap.sh`](scripts/aws-oidc-bootstrap.sh) — one-time AWS setup (already run)
+- [`DEPLOY.md`](DEPLOY.md) — full runbook
 
-<!--
-MAINTAINER: Add a real-world example that shows typical usage.
+## Reset notes
 
-Example:
-```bash
-# Configure a device
-hello-itential configure --target router1.example.com --config network.yaml
+If iagctl client falls over: `sudo -u itential iagctl-client login admin` regenerates `/etc/gateway/api.key`. To inspect state from the box: `iagctl-client get repositories` / `iagctl-client get services`.
 
-# Output:
-# ✓ Connected to router1.example.com
-# ✓ Configuration validated
-# ✓ Changes applied successfully
-```
--->
-
-## Usage
-
-<!--
-MAINTAINER: Provide comprehensive usage examples organized by use case.
-Include both simple and advanced examples. Show common workflows.
--->
-
-### Basic Usage
-
-```bash
-# Add basic usage examples
-```
-
-### Configuration
-
-<!--
-MAINTAINER: If your project uses configuration files, show the format
-and explain the key options. Include a minimal working example.
-
-Example:
-```yaml
-# config.yaml
-target: production
-devices:
-  - hostname: router1.example.com
-    type: cisco_ios
-options:
-  timeout: 30
-  retry: 3
-```
--->
-
-### Advanced Examples
-
-<!--
-MAINTAINER: Show more complex scenarios that power users might need.
-Include examples for:
-- Automation/scripting
-- Integration with other tools
-- Performance optimization
-- Edge cases
--->
-
-```bash
-# Add advanced usage examples
-```
-
-## Documentation
-
-<!--
-MAINTAINER: Link to additional documentation resources.
-Remove sections that don't apply to your project.
--->
-
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute to this project
-- [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines
-- [Changelog](CHANGELOG.md) - Version history and release notes
-
-<!--
-MAINTAINER: Add links to additional docs if you have them:
-- [API Reference](docs/api.md)
-- [Configuration Guide](docs/configuration.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Examples](examples/)
--->
-
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
-
-Before contributing, you'll need to sign our [Contributor License Agreement](CLA.md).
-
-## Support
-
-<!--
-MAINTAINER: Describe how users can get help. Options include:
-- GitHub Issues (for bugs)
-- GitHub Discussions (for questions)
-- Email support
-- Community chat (Slack, Discord)
--->
-
-- **Bug Reports**: [Open an issue](https://github.com/itential/hello-itential/issues/new)
-- **Questions**: [Start a discussion](https://github.com/itential/hello-itential/discussions)
-- **Maintainer**: [@wcollins](https://github.com/wcollins)
-
-## License
-
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  Made with ❤️ by the <a href="https://github.com/itential">Itential</a> community
-</p>
+The pipeline only creates/replaces — it doesn't delete orphans. To remove an old service, run `iagctl-client delete service <name>` on the box.

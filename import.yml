@@ -1,113 +1,28 @@
 ---
+# Edit this file, open a PR, merge to main → /opt/gateway/deploy.sh runs on
+# the IAG5 server and reconciles state. See DEPLOY.md for the full pipeline.
+
 repositories:
-    - name: hello-iagctl
-      description: Get started with iagctl
-      url: https://github.com/itential/hello-itential.git
-      reference: main
-      tags:
-        - demo
-        - iagctl
+  - name: shared-lab-iag-assets
+    description: Assets managed by this repo
+    url: https://github.com/michaelelrom/shared-lab-iag-assets.git
+    reference: main
 
-services:
-    - name: hello-ansible
-      type: ansible-playbook
-      description: Ansible hello world with two string variables
-      # decorator: hello-ansible-decorator
-      working-directory: hello-ansible
-      playbooks:
-        - hello-ansible.yml
-      repository: hello-iagctl
-      tags:
-        - demo
-        - ansible
-      # Optional extra-vars for testing:
-      # first_string: First string to print (default: "Hello")
-      # second_string: Second string to print (default: "World")
-      # target_host: Target host (default: "127.0.0.1")
-
-    - name: hello-python
-      type: python-script
-      description: Python hello world with two string variables
-      # decorator: hello-python-decorator
-      filename: hello-python.py
-      working-directory: hello-python
-      repository: hello-iagctl
-      tags:
-        - demo
-        - python
-      # Optional environment variables for testing:
-      # first_string: First string to print (default: "Hello")
-      # second_string: Second string to print (default: "World")
-
-    - name: hello-opentofu
-      type: opentofu-plan
-      description: OpenTOFU hello world with two string variables
-      # decorator: hello-opentofu-decorator
-      working-directory: hello-opentofu
-      repository: hello-iagctl
-      tags:
-        - demo
-        - opentofu
-      # Optional variables for testing:
-      # first_string: First string to print (default: "Hello")
-      # second_string: Second string to print (default: "World")
-
-# decorators:
-#     - name: hello-ansible-decorator
-#       description: "Decorator for hello-ansible playbook with two string variables"
-#       schema:
-#         $id: "hello-ansible"
-#         $schema: "https://json-schema.org/draft/2020-12/schema"
-#         type: object
-#         properties:
-#           target_host:
-#             type: string
-#             description: "Target host for Ansible to connect to"
-#             default: "127.0.0.1"
-#           first_string:
-#             type: string
-#             description: "First string to print"
-#             default: "Hello"
-#           second_string:
-#             type: string
-#             description: "Second string to print"
-#             default: "World"
-#         required: []
-#         additionalProperties: false
-
-#     - name: hello-opentofu-decorator
-#       description: "Decorator for hello-opentofu with two string variables"
-#       schema:
-#         $id: "hello-opentofu"
-#         $schema: "https://json-schema.org/draft/2020-12/schema"
-#         type: object
-#         properties:
-#           first_string:
-#             type: string
-#             description: "First string to print"
-#             default: "Hello"
-#           second_string:
-#             type: string
-#             description: "Second string to print"
-#             default: "World"
-#         required: []
-#         additionalProperties: false
-
-#     - name: hello-python-decorator
-#       description: "Decorator for hello-python script with two string variables"
-#       schema:
-#         $id: "hello-python"
-#         $schema: "https://json-schema.org/draft/2020-12/schema"
-#         type: object
-#         properties:
-#           first_string:
-#             type: string
-#             description: "First string to print"
-#             default: "Hello"
-#           second_string:
-#             type: string
-#             description: "Second string to print"
-#             default: "World"
-#         required: []
-#         additionalProperties: false
-...
+services: []
+  # Example entries — uncomment + adapt when you add assets to the repo:
+  #
+  # - name: my-playbook
+  #   type: ansible-playbook
+  #   description: ...
+  #   repository: shared-lab-iag-assets
+  #   working-directory: path/in/repo
+  #   playbooks:
+  #     - main.yml
+  #   tags: [demo]
+  #
+  # - name: my-script
+  #   type: python-script
+  #   description: ...
+  #   repository: shared-lab-iag-assets
+  #   working-directory: path/in/repo
+  #   filename: main.py
