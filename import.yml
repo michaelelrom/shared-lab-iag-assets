@@ -10,6 +10,65 @@ repositories:
     url: https://github.com/michaelelrom/shared-lab-iag-assets.git
     reference: main
 
+decorators:
+  - name: junos-netconf-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf input
+      type: object
+      properties:
+        action:
+          description: Operation to perform
+          enum: [is-alive, run-command, get-config, send-command, reboot]
+        host:
+          description: Hostname or IP of the Junos device
+          type: string
+        port:
+          description: NETCONF SSH port
+          type: integer
+          minimum: 1
+          maximum: 65535
+          default: 830
+        user:
+          description: Login username
+          type: string
+        password:
+          description: Login password (pass via $SECRET_vault ... in workflow)
+          type: string
+        timeout:
+          description: NETCONF session connect/read timeout in seconds
+          type: integer
+          minimum: 1
+          default: 30
+        command:
+          description: Operational or set-style command (repeat via comma for multiple)
+          type: string
+        source:
+          description: Datastore source for get-config
+          enum: [running, candidate]
+          default: running
+        filter:
+          description: XML subtree filter for get-config
+          type: string
+        lock-timeout:
+          description: Max seconds to wait for the candidate lock in send-command (0 = no wait)
+          type: integer
+          minimum: 0
+          default: 30
+        lock-poll-interval:
+          description: Seconds between candidate-lock retries in send-command
+          type: number
+          minimum: 0.1
+          default: 2.0
+        at:
+          description: Junos time spec for reboot (e.g. "+5" for 5 minutes)
+          type: string
+        message:
+          description: Optional broadcast message for reboot
+          type: string
+      required: [action, host, user, password]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -41,4 +100,5 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
+    decorator: junos-netconf-input
     tags: [driver, junos, netconf]

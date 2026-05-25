@@ -7,6 +7,9 @@ NETCONF is RPC-over-SSH (port 830) — operations return cleanly even when
 the underlying device restarts daemons.
 
 Actions: is-alive, run-command, get-config, send-command, reboot
+
+All inputs are top-level flags so iagctl's `--set key=value` translation
+works (e.g. `--set action=run-command --set command="show version"`).
 """
 
 import argparse
@@ -49,6 +52,8 @@ def is_alive(args) -> dict:
 
 
 def run_command(args) -> dict:
+    if not args.command:
+        return {"success": False, "host": args.host, "error": "command is required for action=run-command"}
     results = []
     try:
         with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
@@ -78,8 +83,7 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
     """Lock the candidate datastore, retrying on lock-denied up to `timeout` seconds.
 
     Returns elapsed seconds waited. Raises the last RPCError if timeout expires.
-    The retry only catches lock-denied / in-use errors; other RPC failures bubble
-    immediately so a misconfigured device doesn't silently consume the timeout.
+    Only lock-denied / in-use are retried; other RPC failures bubble immediately.
     """
     deadline = time.monotonic() + max(timeout, 0)
     start = time.monotonic()
@@ -96,12 +100,8 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
 
 
 def send_command(args) -> dict:
-    """Apply Junos 'set ...' style config and commit.
-
-    args.command is a list of set commands. Locks candidate (with retry up to
-    --lock-timeout), loads with action='set' format='text', commits, unlocks.
-    Rolls back on failure.
-    """
+    if not args.command:
+        return {"success": False, "host": args.host, "error": "command is required for action=send-command"}
     try:
         with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
             lock_wait = _acquire_candidate_lock(m, args.lock_timeout, args.lock_poll_interval)
@@ -138,11 +138,6 @@ def send_command(args) -> dict:
 
 
 def reboot(args) -> dict:
-    """Schedule a Junos reboot via the <request-reboot/> RPC.
-
-    Unlike CLI 'request system reboot' there is no [yes,no] prompt.
-    --at takes Junos time syntax: '+5' (5 min), '23:30', omit for immediate.
-    """
     try:
         with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
             rpc = "<request-reboot>"
@@ -157,54 +152,6 @@ def reboot(args) -> dict:
         return {"success": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
 
 
-def _add_conn_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--host", required=True)
-    p.add_argument("--port", type=int, default=830)
-    p.add_argument("--user", required=True)
-    p.add_argument("--password", required=True)
-    p.add_argument("--timeout", type=int, default=30, help="SSH/NETCONF connect timeout in seconds")
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
-    sub = parser.add_subparsers(dest="action", required=True)
-
-    p_alive = sub.add_parser("is-alive", help="Verify NETCONF reachability")
-    _add_conn_args(p_alive)
-
-    p_run = sub.add_parser("run-command", help="Execute operational CLI commands via NETCONF")
-    _add_conn_args(p_run)
-    p_run.add_argument("--command", action="append", required=True, help="Operational command (repeatable)")
-
-    p_get = sub.add_parser("get-config", help="Retrieve running or candidate configuration")
-    _add_conn_args(p_get)
-    p_get.add_argument("--source", default="running", choices=["running", "candidate"])
-    p_get.add_argument("--filter", default=None, help="Optional XML subtree filter")
-
-    p_send = sub.add_parser("send-command", help="Apply Junos set-style config and commit")
-    _add_conn_args(p_send)
-    p_send.add_argument("--command", action="append", required=True, help="set-style config line (repeatable)")
-    p_send.add_argument(
-        "--lock-timeout",
-        type=int,
-        default=30,
-        help="Max seconds to wait for the candidate datastore lock (default 30, 0 = no wait)",
-    )
-    p_send.add_argument(
-        "--lock-poll-interval",
-        type=float,
-        default=2.0,
-        help="Seconds between lock retries (default 2)",
-    )
-
-    p_reboot = sub.add_parser("reboot", help="Schedule a reboot via <request-reboot/> RPC")
-    _add_conn_args(p_reboot)
-    p_reboot.add_argument("--at", default=None, help="Junos time spec: '+5', '23:30'. Omit for immediate.")
-    p_reboot.add_argument("--message", default=None, help="Optional broadcast message")
-
-    return parser
-
-
 _DISPATCH = {
     "is-alive": is_alive,
     "run-command": run_command,
@@ -212,6 +159,31 @@ _DISPATCH = {
     "send-command": send_command,
     "reboot": reboot,
 }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
+    parser.add_argument("--action", required=True, choices=sorted(_DISPATCH.keys()))
+    parser.add_argument("--host", required=True)
+    parser.add_argument("--port", type=int, default=830)
+    parser.add_argument("--user", required=True)
+    parser.add_argument("--password", required=True)
+    parser.add_argument("--timeout", type=int, default=30)
+
+    parser.add_argument("--command", action="append", default=None,
+                        help="Operational or set-style command (repeatable). Required for run-command and send-command.")
+    parser.add_argument("--source", default="running", choices=["running", "candidate"],
+                        help="Datastore source for get-config")
+    parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
+    parser.add_argument("--lock-timeout", type=int, default=30,
+                        help="Max seconds to wait for the candidate lock in send-command (0 = no wait)")
+    parser.add_argument("--lock-poll-interval", type=float, default=2.0,
+                        help="Seconds between candidate-lock retries in send-command")
+    parser.add_argument("--at", default=None,
+                        help="Junos time spec for reboot: '+5', '23:30'. Omit for immediate.")
+    parser.add_argument("--message", default=None, help="Optional broadcast message for reboot")
+
+    return parser
 
 
 def main() -> int:

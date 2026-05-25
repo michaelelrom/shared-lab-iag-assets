@@ -20,21 +20,45 @@ netconf ssh` committed on the target device.
 
 ## Invocation (from IAG5 / iagctl)
 
+All inputs are flags; the action is selected via `--action`. The
+`junos-netconf-input` decorator (defined in `import.yml`) validates
+keys against the JSON Schema and rejects unknown ones.
+
 ```bash
-iagctl run service python-script junos-netconf -- \
-  is-alive --host 10.0.16.8 --user itential --password "$JUNOS_PASS"
+iagctl run service python-script junos-netconf \
+  --set action=is-alive \
+  --set host=10.0.16.8 \
+  --set user=itential \
+  --set password="$JUNOS_PASS"
 
-iagctl run service python-script junos-netconf -- \
-  run-command --host 10.0.16.8 --user itential --password "$JUNOS_PASS" \
-  --command "show version" --command "show system storage"
+iagctl run service python-script junos-netconf \
+  --set action=run-command \
+  --set host=10.0.16.8 --set user=itential --set password="$JUNOS_PASS" \
+  --set command="show version"
 
-iagctl run service python-script junos-netconf -- \
-  reboot --host 10.0.16.8 --user itential --password "$JUNOS_PASS" --at +5
+iagctl run service python-script junos-netconf \
+  --set action=reboot \
+  --set host=10.0.16.8 --set user=itential --set password="$JUNOS_PASS" \
+  --set at="+5"
 ```
+
+For multiple commands in a single `run-command` invocation, pass
+`--set command=...` more than once — argparse collects them into a list.
 
 The script writes a single JSON object to stdout and exits non-zero on
 failure. From an Itential workflow task, bind the response to a variable
 and evaluate the `success` and per-action fields directly.
+
+### Required vs optional inputs
+
+The decorator schema enforces:
+
+- **Required for every action:** `action`, `host`, `user`, `password`
+- **Required for `run-command` and `send-command`:** `command` (script
+  validates this beyond the schema since it's conditionally required)
+- **Optional with defaults:** `port` (830), `timeout` (30), `source`
+  (`running`), `lock-timeout` (30), `lock-poll-interval` (2.0)
+- **Unknown keys are rejected** by `additionalProperties: false`
 
 ## Candidate datastore locking (send-command)
 
