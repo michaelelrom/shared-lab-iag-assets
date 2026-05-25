@@ -247,8 +247,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Override candidate-lock retry interval")
 
     parser.add_argument("--command", action="append", default=None,
-                        help="Operational or set-style command (repeatable)")
-    parser.add_argument("--source", default="running", choices=["running", "candidate"])
+                        help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
+    parser.add_argument("--source", default=None,
+                        help="Datastore for get-config (running|candidate); defaults to running. Empty string treated as unset.")
     parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
     parser.add_argument("--at", default=None, help="Junos time spec for reboot (e.g. '+5')")
     parser.add_argument("--message", default=None, help="Optional broadcast message for reboot")
@@ -256,10 +257,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _normalize_args(args):
+    """The IM/MOP framework injects empty-string CLI args for every decorator-defined
+    optional string field (e.g. --filter= --source= --at=). Normalize those to None
+    so downstream code can treat them as 'unset'. Also splits multi-line --command
+    values into separate commands — the MOP command-template framework joins
+    multiple template lines with newlines into one --command value."""
+    for attr in ("source", "filter", "at", "message", "host", "user", "password"):
+        if getattr(args, attr, None) == "":
+            setattr(args, attr, None)
+
+    if args.command:
+        split = []
+        for raw in args.command:
+            if raw is None:
+                continue
+            for line in raw.splitlines():
+                line = line.strip()
+                if line:
+                    split.append(line)
+        args.command = split or None
+
+    if args.source is None:
+        args.source = "running"
+    if args.source not in ("running", "candidate"):
+        raise SystemExit(f"--source must be 'running' or 'candidate', got {args.source!r}")
+
+
 def main() -> int:
     args = build_parser().parse_args()
     if not args.op:
         raise SystemExit("--op flag or JUNOS_OP env var must be set")
+    _normalize_args(args)
     node = _read_stdin_inventory()
     conn = _resolve_connection(args, node)
     result = _DISPATCH[args.op](conn, args)
