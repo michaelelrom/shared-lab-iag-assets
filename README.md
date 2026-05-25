@@ -20,21 +20,32 @@ and replays repositories/services into iagctl (client mode).
 
 No inbound port on the IAG5 box. iagctl auth and certs stay on the host.
 
+## Layout
+
+```
+ansible-playbooks/    Ansible playbook services (one subdir per service)
+python-scripts/       Python script services (one subdir per service)
+terraform-plans/      OpenTofu/Terraform plan services (one subdir per service)
+import.yml            Declares the repository + every service the pipeline manages
+```
+
+Each top-level dir has a `README.md` with a copy-pasteable `import.yml` snippet for that type.
+
 ## Adding an asset
 
-1. Drop the asset files in this repo (e.g. `my-feature/playbook.yml`).
+1. Drop files in the matching dir, e.g. `ansible-playbooks/my-feature/site.yml`.
 2. Add the service to `import.yml`:
    ```yaml
    services:
      - name: my-feature
        type: ansible-playbook
        repository: shared-lab-iag-assets
-       working-directory: my-feature
-       playbooks: [playbook.yml]
+       working-directory: ansible-playbooks/my-feature
+       playbooks: [site.yml]
    ```
 3. Open a PR. Merge to `main` → IAG5 updates within ~30s.
 
-Supported `type` values: `ansible-playbook`, `python-script`, `opentofu-plan`, `executable`. See `iagctl create service <type> --help` on the box for full flag listings.
+Supported `type` values: `ansible-playbook`, `python-script`, `opentofu-plan`, `executable`. See `iagctl create service <type> --help` on the box for the full flag set.
 
 ## Files
 

@@ -1,6 +1,8 @@
 ---
-# Edit this file, open a PR, merge to main → /opt/gateway/deploy.sh runs on
-# the IAG5 server and reconciles state. See DEPLOY.md for the full pipeline.
+# Single source of truth for what IAG5 should have from this repo.
+# Edit, open a PR, merge to main → /opt/gateway/deploy.sh on the IAG5 box
+# reconciles state. Drop assets in python-scripts/, ansible-playbooks/, or
+# terraform-plans/ and reference them below. See DEPLOY.md for the pipeline.
 
 repositories:
   - name: shared-lab-iag-assets
@@ -9,20 +11,26 @@ repositories:
     reference: main
 
 services: []
-  # Example entries — uncomment + adapt when you add assets to the repo:
+  # Example entries — uncomment + adapt:
   #
   # - name: my-playbook
   #   type: ansible-playbook
   #   description: ...
   #   repository: shared-lab-iag-assets
-  #   working-directory: path/in/repo
+  #   working-directory: ansible-playbooks/my-playbook
   #   playbooks:
-  #     - main.yml
+  #     - site.yml
   #   tags: [demo]
   #
   # - name: my-script
   #   type: python-script
   #   description: ...
   #   repository: shared-lab-iag-assets
-  #   working-directory: path/in/repo
+  #   working-directory: python-scripts/my-script
   #   filename: main.py
+  #
+  # - name: my-plan
+  #   type: opentofu-plan
+  #   description: ...
+  #   repository: shared-lab-iag-assets
+  #   working-directory: terraform-plans/my-plan

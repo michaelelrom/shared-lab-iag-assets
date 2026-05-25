@@ -18,6 +18,7 @@ AWS_REGION="us-east-1"
 GH_OWNER="michaelelrom"
 GH_REPO="shared-lab-iag-assets"
 GH_BRANCH="main"
+GH_ENVIRONMENT="iag5-shared-lab"
 IAG5_INSTANCE_ID="i-0dcf9db60fabecc0d"  # EC2 instance id of 52.204.154.11
 ROLE_NAME="gha-deploy-iag5"
 INSTANCE_PROFILE_NAME="iag5-ssm-profile"
@@ -40,7 +41,11 @@ else
   echo "==> GitHub OIDC provider already exists"
 fi
 
-# 2. Deploy role trusted by the one repo + branch
+# 2. Deploy role trusted by the one repo. Two sub patterns are accepted:
+#    - ref form, fired when workflow has no `environment:` set
+#    - environment form, fired when workflow declares `environment: iag5-shared-lab`
+# We use environment-scoped runs in deploy-iag5.yml; the ref form is kept so
+# unscoped re-runs / manual dispatches still work.
 TRUST_POLICY=$(cat <<JSON
 {
   "Version": "2012-10-17",
@@ -53,7 +58,10 @@ TRUST_POLICY=$(cat <<JSON
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
       },
       "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:${GH_OWNER}/${GH_REPO}:ref:refs/heads/${GH_BRANCH}"
+        "token.actions.githubusercontent.com:sub": [
+          "repo:${GH_OWNER}/${GH_REPO}:ref:refs/heads/${GH_BRANCH}",
+          "repo:${GH_OWNER}/${GH_REPO}:environment:${GH_ENVIRONMENT}"
+        ]
       }
     }
   }]
