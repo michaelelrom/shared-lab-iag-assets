@@ -284,6 +284,37 @@ def _normalize_args(args):
         raise SystemExit(f"--source must be 'running' or 'candidate', got {args.source!r}")
 
 
+def _format_for_humans(result, op):
+    """run-command and get-config render as plain text so MOP command-template
+    rules and the IAP UI show real line breaks instead of JSON-escaped \\n.
+    Other ops keep the JSON envelope — they don't have natural text output."""
+    if op == "run-command":
+        results = result.get("results") or []
+        if not results:
+            return f"ERROR: {result.get('error', 'connection failed')}"
+        if len(results) == 1:
+            r = results[0]
+            text = r.get("output", "")
+            if not r.get("success"):
+                text = f"ERROR: {r.get('error', 'unknown error')}\n{text}".rstrip()
+            return text
+        parts = []
+        for r in results:
+            parts.append(f"=== {r['command']} ===")
+            if not r.get("success"):
+                parts.append(f"ERROR: {r.get('error', 'unknown error')}")
+            if r.get("output"):
+                parts.append(r["output"])
+        return "\n".join(parts)
+
+    if op == "get-config":
+        if not result.get("success"):
+            return f"ERROR: {result.get('error', 'config retrieval failed')}"
+        return result.get("config", "")
+
+    return json.dumps(result, indent=2, default=str)
+
+
 def main() -> int:
     args = build_parser().parse_args()
     if not args.op:
@@ -292,7 +323,7 @@ def main() -> int:
     node = _read_stdin_inventory()
     conn = _resolve_connection(args, node)
     result = _DISPATCH[args.op](conn, args)
-    print(json.dumps(result, indent=2, default=str))
+    print(_format_for_humans(result, args.op))
     return 0 if result.get("success") else 1
 
 
