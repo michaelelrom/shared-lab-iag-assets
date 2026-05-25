@@ -34,3 +34,11 @@ services:
     repository: shared-lab-iag-assets
     working-directory: terraform-plans/test-plan
     tags: [smoke]
+
+  - name: junos-netconf
+    type: python-script
+    description: Junos NETCONF driver (is-alive, run-command, get-config, send-command, reboot)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    tags: [driver, junos, netconf]
