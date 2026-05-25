@@ -10,7 +10,16 @@ repositories:
     url: https://github.com/michaelelrom/shared-lab-iag-assets.git
     reference: main
 
-services: []
+services:
+  - name: echo
+    type: ansible-playbook
+    description: Trivial smoke-test playbook
+    repository: shared-lab-iag-assets
+    working-directory: ansible-playbooks/echo
+    playbooks:
+      - site.yml
+    tags: [smoke]
+
   # Example entries — uncomment + adapt:
   #
   # - name: my-playbook
