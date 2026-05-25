@@ -23,6 +23,7 @@ when both are present — useful for local testing without piping JSON.
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -231,8 +232,9 @@ def _resolve_connection(args, node):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
-    parser.add_argument("--op", required=True, choices=sorted(_DISPATCH.keys()),
-                        help="Operation to perform: is-alive, run-command, get-config, send-command, reboot")
+    parser.add_argument("--op", default=os.environ.get("JUNOS_OP"),
+                        choices=sorted(_DISPATCH.keys()),
+                        help="Operation to perform. Defaults to JUNOS_OP env var.")
 
     parser.add_argument("--host", default=None, help="Override the inventory's itential_host")
     parser.add_argument("--port", type=int, default=None, help="Override the inventory's netconf port")
@@ -256,6 +258,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if not args.op:
+        raise SystemExit("--op flag or JUNOS_OP env var must be set")
     node = _read_stdin_inventory()
     conn = _resolve_connection(args, node)
     result = _DISPATCH[args.op](conn, args)

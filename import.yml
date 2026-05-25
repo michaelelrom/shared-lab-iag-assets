@@ -14,24 +14,19 @@ decorators:
   - name: junos-netconf-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
-      title: junos-netconf input
+      title: junos-netconf runtime inputs
       description: >
-        Connection parameters (host, port, user, password, timeout, lock-*)
-        are read by the script from stdin (gateway5 InventoryInfo). Only the
-        action selector and per-action runtime inputs (command, source, etc.)
-        are passed via --set / action_parameters.
+        The operation is selected by the service name (one service per op,
+        mirroring netsdk's pattern). Connection parameters come from the
+        device's IM record via stdin. Only per-op runtime inputs go here.
       type: object
       properties:
-        op:
-          description: Operation to perform. Named 'op' rather than 'action' to avoid colliding with the IM-level "action" key during runtime parameter merge.
-          enum: [is-alive, run-command, get-config, send-command, reboot]
         command:
           description: Operational or set-style command (required for run-command and send-command)
           type: string
         source:
           description: Datastore source for get-config
           enum: [running, candidate]
-          default: running
         filter:
           description: XML subtree filter for get-config
           type: string
@@ -41,33 +36,6 @@ decorators:
         message:
           description: Optional broadcast message for reboot
           type: string
-        host:
-          description: Override the inventory itential_host (rarely needed)
-          type: string
-        port:
-          description: Override the inventory netconf port
-          type: integer
-          minimum: 1
-          maximum: 65535
-        user:
-          description: Override the inventory itential_user
-          type: string
-        password:
-          description: Override the inventory itential_password
-          type: string
-        timeout:
-          description: Override the netconf session timeout in seconds
-          type: integer
-          minimum: 1
-        lock-timeout:
-          description: Override candidate-lock wait for send-command (0 = no wait)
-          type: integer
-          minimum: 0
-        lock-poll-interval:
-          description: Override candidate-lock retry interval
-          type: number
-          minimum: 0.1
-      required: [op]
       additionalProperties: false
 
 services:
@@ -95,11 +63,62 @@ services:
     working-directory: terraform-plans/test-plan
     tags: [smoke]
 
-  - name: junos-netconf
+  - name: junos-netconf-is-alive
     type: python-script
-    description: Junos NETCONF driver (is-alive, run-command, get-config, send-command, reboot)
+    description: Junos NETCONF — verify reachability via NETCONF capability exchange
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
     decorator: junos-netconf-input
+    runtime:
+      env:
+        JUNOS_OP: is-alive
+    tags: [driver, junos, netconf]
+
+  - name: junos-netconf-run-command
+    type: python-script
+    description: Junos NETCONF — execute operational CLI commands via <command/> RPC
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: junos-netconf-input
+    runtime:
+      env:
+        JUNOS_OP: run-command
+    tags: [driver, junos, netconf]
+
+  - name: junos-netconf-get-config
+    type: python-script
+    description: Junos NETCONF — retrieve running or candidate configuration
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: junos-netconf-input
+    runtime:
+      env:
+        JUNOS_OP: get-config
+    tags: [driver, junos, netconf]
+
+  - name: junos-netconf-send-command
+    type: python-script
+    description: Junos NETCONF — apply set-style config with candidate lock and commit
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: junos-netconf-input
+    runtime:
+      env:
+        JUNOS_OP: send-command
+    tags: [driver, junos, netconf]
+
+  - name: junos-netconf-reboot
+    type: python-script
+    description: Junos NETCONF — schedule reboot via <request-reboot/> RPC
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: junos-netconf-input
+    runtime:
+      env:
+        JUNOS_OP: reboot
     tags: [driver, junos, netconf]

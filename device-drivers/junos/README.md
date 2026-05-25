@@ -20,30 +20,37 @@ netconf ssh` committed on the target device.
 
 ## Invocation model
 
+**One service per operation** — same pattern netsdk uses
+(`itential-isalive-netsdk`, `itential-runcommand-netsdk`, etc.). Each of
+the five services in `import.yml` points at the same `main.py` but sets
+a different `JUNOS_OP` environment variable that the script reads to
+dispatch.
+
 Connection parameters (`host`, `port`, `user`, `password`, `timeout`,
 `lock-timeout`, `lock-poll-interval`) come from the device's Inventory
 Manager record via stdin — gateway5 pipes the `InventoryInfo` JSON
 (`{"inventory_nodes": [{"name": "...", "attributes": {...}}]}`) to the
 script's stdin automatically when invoked through an inventory action.
 
-The operation selector is `op` (not `action`) to avoid colliding with
-IM's runtime-parameter merge, which reserves the key `action`. Only the
-`op` and per-operation runtime inputs (`command`, `source`, `filter`,
-`at`, `message`) are passed via `--set` / `action_parameters`. The
-decorator schema marks just `op` as required.
+### Registered services
 
-### From iagctl (manual run with the inventory's attributes)
+| Service name | Operation | Notes |
+|---|---|---|
+| `junos-netconf-is-alive` | is-alive | No runtime args needed |
+| `junos-netconf-run-command` | run-command | Workflow passes `command` |
+| `junos-netconf-get-config` | get-config | Optional `source`, `filter` |
+| `junos-netconf-send-command` | send-command | Workflow passes `command` |
+| `junos-netconf-reboot` | reboot | Optional `at`, `message` |
+
+### From iagctl
 
 ```bash
-iagctl run service python-script junos-netconf \
-  --set op=is-alive
+iagctl run service python-script junos-netconf-is-alive
 
-iagctl run service python-script junos-netconf \
-  --set op=run-command \
+iagctl run service python-script junos-netconf-run-command \
   --set command="show version"
 
-iagctl run service python-script junos-netconf \
-  --set op=reboot \
+iagctl run service python-script junos-netconf-reboot \
   --set at="+5"
 ```
 
@@ -54,14 +61,16 @@ iagctl run service python-script junos-netconf \
   "name": "run-command",
   "action_type": "iag5-service",
   "action_config": {
-    "service_name": "junos-netconf",
+    "service_name": "junos-netconf-run-command",
     "cluster_id":   "cluster-itential"
   },
-  "action_parameters": {
-    "op": "run-command"
-  }
+  "action_parameters": {}
 }
 ```
+
+The action `name` you give the inventory entry is what your workflow
+calls (e.g. `run-command`). The `service_name` is the gateway service it
+routes to. They don't have to match.
 
 The script reads `itential_host` / `itential_user` / `itential_password`
 plus `itential_driver_options.netconf.{port,timeout,lock_timeout,lock_poll_interval}`
@@ -80,14 +89,19 @@ python main.py \
   --user itential \
   --password "$JUNOS_PASS" \
   --command "show version"
+
+# Or via env var (mirrors how the IAG5 services invoke it):
+JUNOS_OP=run-command python main.py \
+  --host 10.0.16.8 --user itential --password "$JUNOS_PASS" \
+  --command "show version"
 ```
 
 CLI flags win over stdin values when both are present.
 
 ### Required vs optional inputs
 
-- **Required (always):** `op`
-- **Required for `op=run-command` and `op=send-command`:** `command` (script enforces)
+- **Operation selector:** set by service name + `JUNOS_OP` env var (not a runtime input)
+- **Required for `junos-netconf-run-command` and `junos-netconf-send-command`:** `command` (script enforces)
 - **Connection fields (`host`, `user`, `password`, etc.):** required at
   runtime but resolved from inventory by default; CLI flags only when
   overriding
