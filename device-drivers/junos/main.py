@@ -8,8 +8,17 @@ the underlying device restarts daemons.
 
 Actions: is-alive, run-command, get-config, send-command, reboot
 
-All inputs are top-level flags so iagctl's `--set key=value` translation
-works (e.g. `--set action=run-command --set command="show version"`).
+Connection parameters (host, port, user, password, timeout, lock options) are
+read from stdin as JSON in the gateway5 InventoryInfo format:
+
+    {"inventory_nodes": [{"name": "...", "attributes": {
+        "itential_host": "...", "itential_user": "...",
+        "itential_password": "...",
+        "itential_driver_options": {"netconf": {"port": 830, ...}}
+    }}]}
+
+CLI flags for those connection params still exist and override stdin values
+when both are present — useful for local testing without piping JSON.
 """
 
 import argparse
@@ -22,41 +31,41 @@ from ncclient.operations.rpc import RPCError
 from ncclient.transport.errors import AuthenticationError, SSHError
 
 
-def _connect(host: str, port: int, user: str, password: str, timeout: int = 30):
+def _connect(conn):
     return manager.connect(
-        host=host,
-        port=port,
-        username=user,
-        password=password,
+        host=conn["host"],
+        port=conn["port"],
+        username=conn["user"],
+        password=conn["password"],
         hostkey_verify=False,
         device_params={"name": "junos"},
-        timeout=timeout,
+        timeout=conn["timeout"],
         allow_agent=False,
         look_for_keys=False,
     )
 
 
-def is_alive(args) -> dict:
+def is_alive(conn, args) -> dict:
     try:
-        with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
+        with _connect(conn) as m:
             return {
                 "success": True,
                 "alive": bool(m.connected),
                 "session_id": m.session_id,
-                "host": args.host,
+                "host": conn["host"],
             }
     except (AuthenticationError, SSHError) as e:
-        return {"success": False, "alive": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "alive": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
     except Exception as e:
-        return {"success": False, "alive": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "alive": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
 
-def run_command(args) -> dict:
+def run_command(conn, args) -> dict:
     if not args.command:
-        return {"success": False, "host": args.host, "error": "command is required for action=run-command"}
+        return {"success": False, "host": conn["host"], "error": "command is required for action=run-command"}
     results = []
     try:
-        with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
+        with _connect(conn) as m:
             for cmd in args.command:
                 try:
                     rpc_reply = m.command(command=cmd, format="text")
@@ -65,26 +74,21 @@ def run_command(args) -> dict:
                     results.append({"command": cmd, "output": output or "", "success": True})
                 except RPCError as e:
                     results.append({"command": cmd, "output": "", "success": False, "error": str(e)})
-        return {"success": all(r["success"] for r in results), "host": args.host, "results": results}
+        return {"success": all(r["success"] for r in results), "host": conn["host"], "results": results}
     except Exception as e:
-        return {"success": False, "host": args.host, "error": str(e), "error_type": type(e).__name__, "results": results}
+        return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__, "results": results}
 
 
-def get_config(args) -> dict:
+def get_config(conn, args) -> dict:
     try:
-        with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
+        with _connect(conn) as m:
             reply = m.get_config(source=args.source, filter=("subtree", args.filter) if args.filter else None)
-            return {"success": True, "host": args.host, "source": args.source, "config": reply.data_xml}
+            return {"success": True, "host": conn["host"], "source": args.source, "config": reply.data_xml}
     except Exception as e:
-        return {"success": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
 
 def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
-    """Lock the candidate datastore, retrying on lock-denied up to `timeout` seconds.
-
-    Returns elapsed seconds waited. Raises the last RPCError if timeout expires.
-    Only lock-denied / in-use are retried; other RPC failures bubble immediately.
-    """
     deadline = time.monotonic() + max(timeout, 0)
     start = time.monotonic()
     while True:
@@ -99,19 +103,19 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
             time.sleep(poll_interval)
 
 
-def send_command(args) -> dict:
+def send_command(conn, args) -> dict:
     if not args.command:
-        return {"success": False, "host": args.host, "error": "command is required for action=send-command"}
+        return {"success": False, "host": conn["host"], "error": "command is required for action=send-command"}
     try:
-        with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
-            lock_wait = _acquire_candidate_lock(m, args.lock_timeout, args.lock_poll_interval)
+        with _connect(conn) as m:
+            lock_wait = _acquire_candidate_lock(m, conn["lock_timeout"], conn["lock_poll_interval"])
             try:
                 config_text = "\n".join(args.command)
                 m.load_configuration(action="set", config=config_text)
                 commit_reply = m.commit()
                 return {
                     "success": True,
-                    "host": args.host,
+                    "host": conn["host"],
                     "commands": args.command,
                     "lock_wait_seconds": round(lock_wait, 2),
                     "commit": commit_reply.xml,
@@ -123,7 +127,7 @@ def send_command(args) -> dict:
                     pass
                 return {
                     "success": False,
-                    "host": args.host,
+                    "host": conn["host"],
                     "commands": args.command,
                     "error": str(inner),
                     "error_type": type(inner).__name__,
@@ -134,12 +138,12 @@ def send_command(args) -> dict:
                 except Exception:
                     pass
     except Exception as e:
-        return {"success": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
 
-def reboot(args) -> dict:
+def reboot(conn, args) -> dict:
     try:
-        with _connect(args.host, args.port, args.user, args.password, timeout=args.timeout) as m:
+        with _connect(conn) as m:
             rpc = "<request-reboot>"
             if args.at:
                 rpc += f"<at>{args.at}</at>"
@@ -147,9 +151,9 @@ def reboot(args) -> dict:
                 rpc += f"<message>{args.message}</message>"
             rpc += "</request-reboot>"
             reply = m.rpc(rpc)
-            return {"success": True, "host": args.host, "at": args.at, "response": reply.xml}
+            return {"success": True, "host": conn["host"], "at": args.at, "response": reply.xml}
     except Exception as e:
-        return {"success": False, "host": args.host, "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
 
 _DISPATCH = {
@@ -161,26 +165,89 @@ _DISPATCH = {
 }
 
 
+def _read_stdin_inventory():
+    """Read the InventoryInfo JSON gateway5 pipes to stdin. Returns None if no data."""
+    if sys.stdin.isatty():
+        return None
+    raw = sys.stdin.read()
+    if not raw or not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or "inventory_nodes" not in data:
+        return None
+    nodes = data.get("inventory_nodes") or []
+    if not nodes:
+        return None
+    return nodes[0]
+
+
+def _resolve_connection(args, node):
+    """Merge connection params: CLI args win over inventory attributes."""
+    attrs = (node or {}).get("attributes", {}) or {}
+    netconf_opts = (attrs.get("itential_driver_options") or {}).get("netconf") or {}
+
+    def pick(cli_val, *attr_paths, default=None):
+        if cli_val is not None:
+            return cli_val
+        for path in attr_paths:
+            cursor = attrs
+            for k in path:
+                if not isinstance(cursor, dict):
+                    cursor = None
+                    break
+                cursor = cursor.get(k)
+            if cursor is not None:
+                return cursor
+        return default
+
+    host = pick(args.host, ("itential_host",))
+    user = pick(args.user, ("itential_user",))
+    password = pick(args.password, ("itential_password",))
+    port = pick(args.port, ("itential_driver_options", "netconf", "port"), default=830)
+    timeout = pick(args.timeout, ("itential_driver_options", "netconf", "timeout"), default=30)
+    lock_timeout = pick(args.lock_timeout, ("itential_driver_options", "netconf", "lock_timeout"), default=30)
+    lock_poll_interval = pick(args.lock_poll_interval, ("itential_driver_options", "netconf", "lock_poll_interval"), default=2.0)
+
+    missing = [name for name, val in [("host", host), ("user", user), ("password", password)] if not val]
+    if missing:
+        raise SystemExit(
+            f"missing required connection field(s): {', '.join(missing)} "
+            f"(provide via --{missing[0]} or inventory attribute itential_{missing[0]})"
+        )
+
+    return {
+        "host": host,
+        "port": int(port),
+        "user": user,
+        "password": password,
+        "timeout": int(timeout),
+        "lock_timeout": int(lock_timeout),
+        "lock_poll_interval": float(lock_poll_interval),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
     parser.add_argument("--action", required=True, choices=sorted(_DISPATCH.keys()))
-    parser.add_argument("--host", required=True)
-    parser.add_argument("--port", type=int, default=830)
-    parser.add_argument("--user", required=True)
-    parser.add_argument("--password", required=True)
-    parser.add_argument("--timeout", type=int, default=30)
+
+    parser.add_argument("--host", default=None, help="Override the inventory's itential_host")
+    parser.add_argument("--port", type=int, default=None, help="Override the inventory's netconf port")
+    parser.add_argument("--user", default=None, help="Override the inventory's itential_user")
+    parser.add_argument("--password", default=None, help="Override the inventory's itential_password")
+    parser.add_argument("--timeout", type=int, default=None, help="Override the netconf session timeout")
+    parser.add_argument("--lock-timeout", type=int, default=None,
+                        help="Override candidate-lock wait for send-command (0 = no wait)")
+    parser.add_argument("--lock-poll-interval", type=float, default=None,
+                        help="Override candidate-lock retry interval")
 
     parser.add_argument("--command", action="append", default=None,
-                        help="Operational or set-style command (repeatable). Required for run-command and send-command.")
-    parser.add_argument("--source", default="running", choices=["running", "candidate"],
-                        help="Datastore source for get-config")
+                        help="Operational or set-style command (repeatable)")
+    parser.add_argument("--source", default="running", choices=["running", "candidate"])
     parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
-    parser.add_argument("--lock-timeout", type=int, default=30,
-                        help="Max seconds to wait for the candidate lock in send-command (0 = no wait)")
-    parser.add_argument("--lock-poll-interval", type=float, default=2.0,
-                        help="Seconds between candidate-lock retries in send-command")
-    parser.add_argument("--at", default=None,
-                        help="Junos time spec for reboot: '+5', '23:30'. Omit for immediate.")
+    parser.add_argument("--at", default=None, help="Junos time spec for reboot (e.g. '+5')")
     parser.add_argument("--message", default=None, help="Optional broadcast message for reboot")
 
     return parser
@@ -188,7 +255,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    result = _DISPATCH[args.action](args)
+    node = _read_stdin_inventory()
+    conn = _resolve_connection(args, node)
+    result = _DISPATCH[args.action](conn, args)
     print(json.dumps(result, indent=2, default=str))
     return 0 if result.get("success") else 1
 

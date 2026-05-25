@@ -18,46 +18,77 @@ netconf ssh` committed on the target device.
 | `send-command` | Apply Junos `set …` config and commit | Locks candidate, loads `action="set" format="text"`, commits, unlocks. Discards on failure. |
 | `reboot` | Schedule a reboot via `<request-reboot/>` RPC | No `[yes,no]` prompt. `--at +5` for delayed reboot. |
 
-## Invocation (from IAG5 / iagctl)
+## Invocation model
 
-All inputs are flags; the action is selected via `--action`. The
-`junos-netconf-input` decorator (defined in `import.yml`) validates
-keys against the JSON Schema and rejects unknown ones.
+Connection parameters (`host`, `port`, `user`, `password`, `timeout`,
+`lock-timeout`, `lock-poll-interval`) come from the device's Inventory
+Manager record via stdin — gateway5 pipes the `InventoryInfo` JSON
+(`{"inventory_nodes": [{"name": "...", "attributes": {...}}]}`) to the
+script's stdin automatically when invoked through an inventory action.
+
+Only the action selector and per-action runtime inputs (`command`,
+`source`, `filter`, `at`, `message`) are passed via `--set` /
+`action_parameters`. The decorator schema marks just `action` as required.
+
+### From iagctl (manual run with the inventory's attributes)
 
 ```bash
 iagctl run service python-script junos-netconf \
-  --set action=is-alive \
-  --set host=10.0.16.8 \
-  --set user=itential \
-  --set password="$JUNOS_PASS"
+  --set action=is-alive
 
 iagctl run service python-script junos-netconf \
   --set action=run-command \
-  --set host=10.0.16.8 --set user=itential --set password="$JUNOS_PASS" \
   --set command="show version"
 
 iagctl run service python-script junos-netconf \
   --set action=reboot \
-  --set host=10.0.16.8 --set user=itential --set password="$JUNOS_PASS" \
   --set at="+5"
 ```
 
-For multiple commands in a single `run-command` invocation, pass
-`--set command=...` more than once — argparse collects them into a list.
+### From an Inventory Manager action mapping
 
-The script writes a single JSON object to stdout and exits non-zero on
-failure. From an Itential workflow task, bind the response to a variable
-and evaluate the `success` and per-action fields directly.
+```json
+{
+  "name": "run-command",
+  "action_type": "iag5-service",
+  "action_config": {
+    "service_name": "junos-netconf",
+    "cluster_id":   "cluster-itential"
+  },
+  "action_parameters": {
+    "action": "run-command"
+  }
+}
+```
+
+The script reads `itential_host` / `itential_user` / `itential_password`
+plus `itential_driver_options.netconf.{port,timeout,lock_timeout,lock_poll_interval}`
+from the inventory record. Workflow tasks supply the runtime
+`command` (or `at`, `source`, etc.) when invoking the action.
+
+### Direct local testing
+
+The connection params can also be passed as CLI flags. Useful when
+testing the script outside gateway5:
+
+```bash
+python main.py \
+  --action run-command \
+  --host 10.0.16.8 \
+  --user itential \
+  --password "$JUNOS_PASS" \
+  --command "show version"
+```
+
+CLI flags win over stdin values when both are present.
 
 ### Required vs optional inputs
 
-The decorator schema enforces:
-
-- **Required for every action:** `action`, `host`, `user`, `password`
-- **Required for `run-command` and `send-command`:** `command` (script
-  validates this beyond the schema since it's conditionally required)
-- **Optional with defaults:** `port` (830), `timeout` (30), `source`
-  (`running`), `lock-timeout` (30), `lock-poll-interval` (2.0)
+- **Required (always):** `action`
+- **Required for `run-command` and `send-command`:** `command` (script enforces)
+- **Connection fields (`host`, `user`, `password`, etc.):** required at
+  runtime but resolved from inventory by default; CLI flags only when
+  overriding
 - **Unknown keys are rejected** by `additionalProperties: false`
 
 ## Candidate datastore locking (send-command)

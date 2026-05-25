@@ -15,33 +15,18 @@ decorators:
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       title: junos-netconf input
+      description: >
+        Connection parameters (host, port, user, password, timeout, lock-*)
+        are read by the script from stdin (gateway5 InventoryInfo). Only the
+        action selector and per-action runtime inputs (command, source, etc.)
+        are passed via --set / action_parameters.
       type: object
       properties:
         action:
           description: Operation to perform
           enum: [is-alive, run-command, get-config, send-command, reboot]
-        host:
-          description: Hostname or IP of the Junos device
-          type: string
-        port:
-          description: NETCONF SSH port
-          type: integer
-          minimum: 1
-          maximum: 65535
-          default: 830
-        user:
-          description: Login username
-          type: string
-        password:
-          description: Login password (pass via $SECRET_vault ... in workflow)
-          type: string
-        timeout:
-          description: NETCONF session connect/read timeout in seconds
-          type: integer
-          minimum: 1
-          default: 30
         command:
-          description: Operational or set-style command (repeat via comma for multiple)
+          description: Operational or set-style command (required for run-command and send-command)
           type: string
         source:
           description: Datastore source for get-config
@@ -50,23 +35,39 @@ decorators:
         filter:
           description: XML subtree filter for get-config
           type: string
-        lock-timeout:
-          description: Max seconds to wait for the candidate lock in send-command (0 = no wait)
-          type: integer
-          minimum: 0
-          default: 30
-        lock-poll-interval:
-          description: Seconds between candidate-lock retries in send-command
-          type: number
-          minimum: 0.1
-          default: 2.0
         at:
           description: Junos time spec for reboot (e.g. "+5" for 5 minutes)
           type: string
         message:
           description: Optional broadcast message for reboot
           type: string
-      required: [action, host, user, password]
+        host:
+          description: Override the inventory itential_host (rarely needed)
+          type: string
+        port:
+          description: Override the inventory netconf port
+          type: integer
+          minimum: 1
+          maximum: 65535
+        user:
+          description: Override the inventory itential_user
+          type: string
+        password:
+          description: Override the inventory itential_password
+          type: string
+        timeout:
+          description: Override the netconf session timeout in seconds
+          type: integer
+          minimum: 1
+        lock-timeout:
+          description: Override candidate-lock wait for send-command (0 = no wait)
+          type: integer
+          minimum: 0
+        lock-poll-interval:
+          description: Override candidate-lock retry interval
+          type: number
+          minimum: 0.1
+      required: [action]
       additionalProperties: false
 
 services:
