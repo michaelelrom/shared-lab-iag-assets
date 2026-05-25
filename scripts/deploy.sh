@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Idempotently sync IAG5 server state to match import.yml.
+# Sync IAG5 server state to match import.yml.
 #
 # Contract (called from GitHub Actions via SSM as `sudo -u itential`):
 #   $1 = repo full name      (e.g. "michaelelrom/shared-lab-iag-assets")
-#   $2 = commit sha          (40-char)
+#   $2 = commit sha
 #   $3 = raw URL of import.yml at that commit
 #
 # Exit 0 on success, non-zero on any failure. Stdout/stderr are captured by
@@ -29,112 +29,45 @@ echo "==> Fetching ${IMPORT_URL}"
 curl -fsSL "${IMPORT_URL}" -o import.yml
 echo "    $(wc -l < import.yml) lines"
 
-# Convert YAML → compact JSON via python so jq can drive it.
-python3 - <<'PY' > import.json
-import json, sys, yaml
-with open('import.yml') as f:
-    data = yaml.safe_load(f) or {}
-json.dump(data, sys.stdout)
-PY
-
-# Strip ANSI from iagctl output so logs are readable.
 strip_ansi() { sed 's/\x1b\[[0-9;]*[a-zA-Z]//g'; }
+iag() { "${IAGCTL}" "$@" 2>&1 | strip_ansi; return "${PIPESTATUS[0]}"; }
 
-# Run iagctl, strip color. Returns iagctl's exit code via PIPESTATUS.
-iag() {
-    "${IAGCTL}" "$@" 2>&1 | strip_ansi
-    return "${PIPESTATUS[0]}"
-}
-
-# Idempotent create: try create; on "already exists", delete then create.
-# Args: <resource-kind-singular-for-delete> <name> <create-args...>
-upsert() {
-    local kind="$1" name="$2"; shift 2
-    local out
-    if out=$("${IAGCTL}" "$@" 2>&1); then
-        echo "${out}" | strip_ansi
-        return 0
-    fi
-    if grep -qiE 'already exists|object already exists' <<<"${out}"; then
-        echo "  ${name}: exists, replacing"
-        iag delete "${kind}" "${name}" >/dev/null || true
-        iag "$@"
-    else
-        echo "${out}" | strip_ansi >&2
-        return 1
-    fi
-}
-
-# ---------- repositories ----------
+# ---------- validate + import ----------
 echo
-echo "==> Syncing repositories"
-jq -c '.repositories[]? // empty' import.json | while read -r repo; do
-    name=$(jq -r '.name'      <<<"$repo")
-    url=$(jq  -r '.url'       <<<"$repo")
-    ref=$(jq  -r '.reference // "main"' <<<"$repo")
-    desc=$(jq -r '.description // ""'   <<<"$repo")
+echo "==> Validating"
+iag db import import.yml --validate
 
-    args=(create repository "${name}" --url "${url}" --reference "${ref}")
-    [ -n "${desc}" ] && args+=(--description "${desc}")
-    for tag in $(jq -r '.tags[]? // empty' <<<"$repo"); do
-        args+=(--tag "${tag}")
-    done
-
-    echo "  - ${name}"
-    upsert repository "${name}" "${args[@]}"
-done
-
-# ---------- services ----------
 echo
-echo "==> Syncing services"
-jq -c '.services[]? // empty' import.json | while read -r svc; do
-    name=$(jq -r '.name' <<<"$svc")
-    type=$(jq -r '.type' <<<"$svc")
-    repo=$(jq -r '.repository' <<<"$svc")
-    desc=$(jq -r '.description // ""' <<<"$svc")
-    wdir=$(jq -r '."working-directory" // ""' <<<"$svc")
+echo "==> Planned changes (dry-run)"
+iag db import import.yml --check --force
 
-    case "${type}" in
-        ansible-playbook|python-script|opentofu-plan|executable) subcmd="${type}" ;;
-        *) echo "    ! unknown service type '${type}' for '${name}' — skipping" >&2; continue ;;
-    esac
-
-    args=(create service "${subcmd}" "${name}" --repository "${repo}")
-    [ -n "${desc}" ] && args+=(--description "${desc}")
-    [ -n "${wdir}" ] && args+=(--working-dir "${wdir}")
-
-    case "${type}" in
-        ansible-playbook)
-            for pb in $(jq -r '.playbooks[]? // empty' <<<"$svc"); do
-                args+=(--playbook "${pb}")
-            done
-            ;;
-        python-script)
-            fn=$(jq -r '.filename // ""' <<<"$svc")
-            [ -n "${fn}" ] && args+=(--filename "${fn}")
-            ;;
-    esac
-
-    for tag in $(jq -r '.tags[]? // empty' <<<"$svc"); do
-        args+=(--tag "${tag}")
-    done
-
-    echo "  - ${name} (${type})"
-    upsert service "${name}" "${args[@]}"
-done
+echo
+echo "==> Applying"
+iag db import import.yml --force
 
 # ---------- prune orphans ----------
-# import.yml is source-of-truth for services in any repository it lists.
+# import.yml is the source of truth for services in repositories it lists.
 # Services in IAG5 whose repository.name is in our managed-repos set but whose
 # service name is NOT in our wanted-services set are deleted. Services in
-# unmanaged repos are left alone.
+# unmanaged repos are left alone, so the same IAG5 host can serve multiple
+# independent asset repos.
 echo
 echo "==> Pruning orphan services"
 
-MANAGED_REPOS=$(jq -r '[.repositories[]?.name] | join(" ")' import.json)
-WANTED_SERVICES=$(jq -r '[.services[]?.name] | join(" ")' import.json)
+# python keeps the YAML parser; jq is overkill here.
+python3 - <<'PY' > /tmp/managed.json
+import json, yaml
+with open('import.yml') as f:
+    data = yaml.safe_load(f) or {}
+print(json.dumps({
+    'repos':    [r['name'] for r in (data.get('repositories') or [])],
+    'services': [s['name'] for s in (data.get('services')     or [])],
+}))
+PY
 
-# Read each service in IAG5 + its repo. `describe service` returns the repo.name.
+MANAGED_REPOS=$(jq -r '.repos[]' /tmp/managed.json)
+WANTED_SERVICES=$(jq -r '.services[]' /tmp/managed.json)
+
 "${IAGCTL}" get services --raw 2>/dev/null \
   | jq -r '.services[]?.name' \
   | while read -r svc_name; do
