@@ -26,22 +26,24 @@ Manager record via stdin — gateway5 pipes the `InventoryInfo` JSON
 (`{"inventory_nodes": [{"name": "...", "attributes": {...}}]}`) to the
 script's stdin automatically when invoked through an inventory action.
 
-Only the action selector and per-action runtime inputs (`command`,
-`source`, `filter`, `at`, `message`) are passed via `--set` /
-`action_parameters`. The decorator schema marks just `action` as required.
+The operation selector is `op` (not `action`) to avoid colliding with
+IM's runtime-parameter merge, which reserves the key `action`. Only the
+`op` and per-operation runtime inputs (`command`, `source`, `filter`,
+`at`, `message`) are passed via `--set` / `action_parameters`. The
+decorator schema marks just `op` as required.
 
 ### From iagctl (manual run with the inventory's attributes)
 
 ```bash
 iagctl run service python-script junos-netconf \
-  --set action=is-alive
+  --set op=is-alive
 
 iagctl run service python-script junos-netconf \
-  --set action=run-command \
+  --set op=run-command \
   --set command="show version"
 
 iagctl run service python-script junos-netconf \
-  --set action=reboot \
+  --set op=reboot \
   --set at="+5"
 ```
 
@@ -56,7 +58,7 @@ iagctl run service python-script junos-netconf \
     "cluster_id":   "cluster-itential"
   },
   "action_parameters": {
-    "action": "run-command"
+    "op": "run-command"
   }
 }
 ```
@@ -73,7 +75,7 @@ testing the script outside gateway5:
 
 ```bash
 python main.py \
-  --action run-command \
+  --op run-command \
   --host 10.0.16.8 \
   --user itential \
   --password "$JUNOS_PASS" \
@@ -84,8 +86,8 @@ CLI flags win over stdin values when both are present.
 
 ### Required vs optional inputs
 
-- **Required (always):** `action`
-- **Required for `run-command` and `send-command`:** `command` (script enforces)
+- **Required (always):** `op`
+- **Required for `op=run-command` and `op=send-command`:** `command` (script enforces)
 - **Connection fields (`host`, `user`, `password`, etc.):** required at
   runtime but resolved from inventory by default; CLI flags only when
   overriding

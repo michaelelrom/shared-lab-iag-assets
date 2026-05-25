@@ -231,7 +231,8 @@ def _resolve_connection(args, node):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
-    parser.add_argument("--action", required=True, choices=sorted(_DISPATCH.keys()))
+    parser.add_argument("--op", required=True, choices=sorted(_DISPATCH.keys()),
+                        help="Operation to perform: is-alive, run-command, get-config, send-command, reboot")
 
     parser.add_argument("--host", default=None, help="Override the inventory's itential_host")
     parser.add_argument("--port", type=int, default=None, help="Override the inventory's netconf port")
@@ -257,7 +258,7 @@ def main() -> int:
     args = build_parser().parse_args()
     node = _read_stdin_inventory()
     conn = _resolve_connection(args, node)
-    result = _DISPATCH[args.action](conn, args)
+    result = _DISPATCH[args.op](conn, args)
     print(json.dumps(result, indent=2, default=str))
     return 0 if result.get("success") else 1
 

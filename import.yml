@@ -22,8 +22,8 @@ decorators:
         are passed via --set / action_parameters.
       type: object
       properties:
-        action:
-          description: Operation to perform
+        op:
+          description: Operation to perform. Named 'op' rather than 'action' to avoid colliding with the IM-level "action" key during runtime parameter merge.
           enum: [is-alive, run-command, get-config, send-command, reboot]
         command:
           description: Operational or set-style command (required for run-command and send-command)
@@ -67,7 +67,7 @@ decorators:
           description: Override candidate-lock retry interval
           type: number
           minimum: 0.1
-      required: [action]
+      required: [op]
       additionalProperties: false
 
 services:
