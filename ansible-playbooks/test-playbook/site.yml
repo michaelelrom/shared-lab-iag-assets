@@ -1,0 +1,12 @@
+---
+- name: test-playbook
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: print a greeting
+      ansible.builtin.debug:
+        msg: "ansible test ok"
+
+    - name: print runtime
+      ansible.builtin.debug:
+        msg: "ansible {{ ansible_version.full }}"

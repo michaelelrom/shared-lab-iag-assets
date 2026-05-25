@@ -11,35 +11,26 @@ repositories:
     reference: main
 
 services:
-  - name: echo
+  - name: test-playbook
     type: ansible-playbook
-    description: Trivial smoke-test playbook
+    description: Smoke-test ansible playbook (localhost debug task)
     repository: shared-lab-iag-assets
-    working-directory: ansible-playbooks/echo
+    working-directory: ansible-playbooks/test-playbook
     playbooks:
       - site.yml
     tags: [smoke]
 
-  # Example entries — uncomment + adapt:
-  #
-  # - name: my-playbook
-  #   type: ansible-playbook
-  #   description: ...
-  #   repository: shared-lab-iag-assets
-  #   working-directory: ansible-playbooks/my-playbook
-  #   playbooks:
-  #     - site.yml
-  #   tags: [demo]
-  #
-  # - name: my-script
-  #   type: python-script
-  #   description: ...
-  #   repository: shared-lab-iag-assets
-  #   working-directory: python-scripts/my-script
-  #   filename: main.py
-  #
-  # - name: my-plan
-  #   type: opentofu-plan
-  #   description: ...
-  #   repository: shared-lab-iag-assets
-  #   working-directory: terraform-plans/my-plan
+  - name: test-script
+    type: python-script
+    description: Smoke-test python script (prints runtime info)
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/test-script
+    filename: main.py
+    tags: [smoke]
+
+  - name: test-plan
+    type: opentofu-plan
+    description: Smoke-test OpenTofu plan (no providers, just outputs)
+    repository: shared-lab-iag-assets
+    working-directory: terraform-plans/test-plan
+    tags: [smoke]

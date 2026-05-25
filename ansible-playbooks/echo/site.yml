@@ -1,8 +1,0 @@
----
-- name: echo
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: say hello
-      ansible.builtin.debug:
-        msg: "hello from shared-lab-iag-assets@{{ lookup('env', 'HOSTNAME') | default('iag5', true) }}"
