@@ -83,11 +83,29 @@ def run_command(conn, args) -> dict:
         return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__, "results": results}
 
 
+_CONFIG_FORMATS = ("xml", "text", "set", "json")
+
+
 def get_config(conn, args) -> dict:
+    fmt = conn.get("config_format") or "xml"
+    if fmt not in _CONFIG_FORMATS:
+        return {"success": False, "host": conn["host"], "error": f"unsupported config_format {fmt!r}; choose from {_CONFIG_FORMATS}"}
+    if fmt != "xml" and args.source == "candidate":
+        return {"success": False, "host": conn["host"], "error": "config_format text/set/json reads from running only; use xml for candidate datastore"}
     try:
         with _connect(conn) as m:
-            reply = m.get_config(source=args.source, filter=("subtree", args.filter) if args.filter else None)
-            return {"success": True, "host": conn["host"], "source": args.source, "config": reply.data_xml}
+            if fmt == "xml":
+                reply = m.get_config(source=args.source, filter=("subtree", args.filter) if args.filter else None)
+                return {"success": True, "host": conn["host"], "source": args.source, "config_format": fmt, "config": reply.data_xml}
+            cmd = "show configuration"
+            if fmt == "set":
+                cmd += " | display set"
+            elif fmt == "json":
+                cmd += " | display json"
+            rpc_reply = m.command(command=cmd, format="text")
+            output_nodes = rpc_reply.xpath(".//output")
+            output = output_nodes[0].text if output_nodes else rpc_reply.xml
+            return {"success": True, "host": conn["host"], "source": "running", "config_format": fmt, "config": output or ""}
     except Exception as e:
         return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
@@ -110,12 +128,22 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
 def send_command(conn, args) -> dict:
     if not args.command:
         return {"success": False, "host": conn["host"], "error": "command is required for action=send-command"}
+    fmt = conn.get("config_format") or "set"
+    if fmt not in _CONFIG_FORMATS:
+        return {"success": False, "host": conn["host"], "error": f"unsupported config_format {fmt!r}; choose from {_CONFIG_FORMATS}"}
     try:
         with _connect(conn) as m:
             lock_wait = _acquire_candidate_lock(m, conn["lock_timeout"], conn["lock_poll_interval"])
             try:
                 config_text = "\n".join(args.command)
-                m.load_configuration(action="set", config=config_text)
+                if fmt == "set":
+                    m.load_configuration(action="set", config=config_text)
+                elif fmt == "text":
+                    m.load_configuration(action="merge", format="text", config=config_text)
+                elif fmt == "xml":
+                    m.load_configuration(format="xml", config=config_text)
+                elif fmt == "json":
+                    m.load_configuration(format="json", config=config_text)
                 commit_reply = m.commit()
                 return {
                     "success": True,
@@ -220,6 +248,7 @@ def _resolve_connection(args, node):
     port = pick(args.port, ("itential_driver_options", "netconf", "port"), default=830)
     timeout = pick(args.timeout, ("itential_driver_options", "netconf", "timeout"), default=30)
     command_timeout = pick(args.command_timeout, ("itential_driver_options", "netconf", "command_timeout"), default=None)
+    config_format = pick(args.config_format, ("itential_driver_options", "netconf", "config_format"), default=None)
     lock_timeout = pick(args.lock_timeout, ("itential_driver_options", "netconf", "lock_timeout"), default=30)
     lock_poll_interval = pick(args.lock_poll_interval, ("itential_driver_options", "netconf", "lock_poll_interval"), default=2.0)
 
@@ -237,6 +266,7 @@ def _resolve_connection(args, node):
         "password": password,
         "timeout": int(timeout),
         "command_timeout": int(command_timeout) if command_timeout is not None else None,
+        "config_format": str(config_format) if config_format is not None else None,
         "lock_timeout": int(lock_timeout),
         "lock_poll_interval": float(lock_poll_interval),
     }
@@ -255,6 +285,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=None, help="Override the netconf session timeout")
     parser.add_argument("--command-timeout", type=int, default=None,
                         help="Override RPC wait timeout for run-command (use for slow ops like software add)")
+    parser.add_argument("--config-format", default=None, choices=list(_CONFIG_FORMATS),
+                        help="Config format for get-config/send-command: xml (default), text (curly), set, json")
     parser.add_argument("--lock-timeout", type=int, default=None,
                         help="Override candidate-lock wait for send-command (0 = no wait)")
     parser.add_argument("--lock-poll-interval", type=float, default=None,
