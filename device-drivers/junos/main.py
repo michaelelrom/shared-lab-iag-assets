@@ -337,7 +337,11 @@ def _normalize_args(args):
 def _format_for_humans(result, op):
     """run-command and get-config render as plain text so MOP command-template
     rules and the IAP UI show real line breaks instead of JSON-escaped \\n.
+    is-alive outputs a JSON boolean so Config Manager can parse it directly.
     Other ops keep the JSON envelope — they don't have natural text output."""
+    if op == "is-alive":
+        return "true" if result.get("alive") else "false"
+
     if op == "run-command":
         results = result.get("results") or []
         if not results:
