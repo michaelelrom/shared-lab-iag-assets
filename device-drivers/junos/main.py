@@ -103,8 +103,12 @@ def get_config(conn, args) -> dict:
             elif fmt == "json":
                 cmd += " | display json"
             rpc_reply = m.command(command=cmd, format="text")
-            output_nodes = rpc_reply.xpath(".//output")
-            output = output_nodes[0].text if output_nodes else rpc_reply.xml
+            # show configuration variants return <configuration-output> or <json-output>,
+            # not <output>; fall through all three xpaths before giving up.
+            output_nodes = (rpc_reply.xpath(".//configuration-output")
+                            or rpc_reply.xpath(".//json-output")
+                            or rpc_reply.xpath(".//output"))
+            output = output_nodes[0].text if output_nodes else ""
             return {"success": True, "host": conn["host"], "source": "running", "config_format": fmt, "config": output or ""}
     except Exception as e:
         return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
