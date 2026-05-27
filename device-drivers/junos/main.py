@@ -22,6 +22,7 @@ when both are present — useful for local testing without piping JSON.
 """
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -347,7 +348,16 @@ def _format_for_humans(result, op):
     is-alive outputs a JSON boolean so Config Manager can parse it directly.
     Other ops keep the JSON envelope — they don't have natural text output."""
     if op == "is-alive":
-        return "true" if result.get("alive") else "false"
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        return json.dumps([{
+            "name": result.get("host", ""),
+            "alive": result.get("alive", False),
+            "success": result.get("success", False),
+            "host": result.get("host", ""),
+            "start_time": now,
+            "end_time": now,
+            "elapsed_time": "0.000s",
+        }])
 
     if op == "run-command":
         results = result.get("results") or []
