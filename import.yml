@@ -11,30 +11,55 @@ repositories:
     reference: main
 
 decorators:
-  - name: junos-netconf-input
+  - name: junos-netconf-run-command-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
-      title: junos-netconf runtime inputs
-      description: >
-        The operation is selected by the service name (one service per op,
-        mirroring netsdk's pattern). Connection parameters come from the
-        device's IM record via stdin. Only per-op runtime inputs go here.
+      title: junos-netconf-run-command inputs
       type: object
       properties:
         command:
-          description: Operational or set-style command (required for run-command and send-command)
+          description: Operational CLI command to execute (e.g. "show version")
           type: string
+      required: [command]
+      additionalProperties: false
+
+  - name: junos-netconf-get-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf-get-config inputs
+      type: object
+      properties:
         source:
-          description: Datastore source for get-config
+          description: Datastore to read from (running or candidate)
           enum: [running, candidate]
         filter:
-          description: XML subtree filter for get-config
+          description: Optional XML subtree filter
           type: string
+      additionalProperties: false
+
+  - name: junos-netconf-send-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf-send-command inputs
+      type: object
+      properties:
+        command:
+          description: Junos set-style config command to apply and commit (e.g. "set interfaces ge-0/0/0 description test")
+          type: string
+      required: [command]
+      additionalProperties: false
+
+  - name: junos-netconf-reboot-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf-reboot inputs
+      type: object
+      properties:
         at:
-          description: Junos time spec for reboot (e.g. "+5" for 5 minutes)
+          description: Junos time spec for reboot (e.g. "+5" for 5 minutes from now)
           type: string
         message:
-          description: Optional broadcast message for reboot
+          description: Optional broadcast message shown to logged-in users before reboot
           type: string
       additionalProperties: false
 
@@ -69,7 +94,6 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-input
     runtime:
       env:
         JUNOS_OP: is-alive
@@ -81,7 +105,7 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-input
+    decorator: junos-netconf-run-command-input
     runtime:
       env:
         JUNOS_OP: run-command
@@ -93,7 +117,7 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-input
+    decorator: junos-netconf-get-config-input
     runtime:
       env:
         JUNOS_OP: get-config
@@ -105,7 +129,7 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-input
+    decorator: junos-netconf-send-command-input
     runtime:
       env:
         JUNOS_OP: send-command
@@ -117,7 +141,7 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-input
+    decorator: junos-netconf-reboot-input
     runtime:
       env:
         JUNOS_OP: reboot
