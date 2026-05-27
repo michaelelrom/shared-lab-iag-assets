@@ -389,7 +389,7 @@ def main() -> int:
     node = _read_stdin_inventory()
     conn = _resolve_connection(args, node)
     result = _DISPATCH[args.op](conn, args)
-    print(_format_for_humans(result, args.op))
+    print(_format_for_humans(result, args.op), end="" if args.op == "is-alive" else "\n")
     return 0 if result.get("success") else 1
 
 
