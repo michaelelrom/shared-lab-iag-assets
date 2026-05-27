@@ -49,6 +49,21 @@ decorators:
       required: [command]
       additionalProperties: false
 
+  - name: send-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: send-config broker inputs
+      description: >
+        Broker service called by gw-manager's sendConfig path (Config Manager
+        remediation). gw-manager passes 'config' (multi-line set commands);
+        the script folds it into --command for NETCONF commit.
+      type: object
+      properties:
+        config:
+          description: Multi-line Junos set-style config block to apply and commit
+          type: string
+      additionalProperties: false
+
   - name: junos-netconf-reboot-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -146,3 +161,15 @@ services:
       env:
         JUNOS_OP: reboot
     tags: [driver, junos, netconf]
+
+  - name: send-config
+    type: python-script
+    description: Junos NETCONF — broker send-config entry point for Config Manager remediation
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: send-config-input
+    runtime:
+      env:
+        JUNOS_OP: send-command
+    tags: [driver, junos, netconf, broker]

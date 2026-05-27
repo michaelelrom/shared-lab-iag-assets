@@ -310,6 +310,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--command", action="append", default=None,
                         help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
+    parser.add_argument("--config", default=None,
+                        help="Multi-line set-style config block for send-command (gw-manager broker path passes 'config', not 'command')")
     parser.add_argument("--source", default=None,
                         help="Datastore for get-config (running|candidate); defaults to running. Empty string treated as unset.")
     parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
@@ -325,9 +327,14 @@ def _normalize_args(args):
     so downstream code can treat them as 'unset'. Also splits multi-line --command
     values into separate commands — the MOP command-template framework joins
     multiple template lines with newlines into one --command value."""
-    for attr in ("source", "filter", "at", "message", "host", "user", "password"):
+    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config"):
         if getattr(args, attr, None) == "":
             setattr(args, attr, None)
+
+    # gw-manager broker path passes --config instead of --command; fold it in
+    if args.config and not args.command:
+        args.command = [args.config]
+    args.config = None
 
     if args.command:
         split = []
