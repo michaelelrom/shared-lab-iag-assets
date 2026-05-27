@@ -100,7 +100,7 @@ def get_config(conn, args) -> dict:
                 reply = m.get_config(source=args.source, filter=("subtree", args.filter) if args.filter else None)
                 try:
                     tree = _etree.fromstring(reply.data_xml.encode())
-                    config_xml = _etree.tostring(tree, pretty_print=True).decode()
+                    config_xml = _etree.tostring(tree, pretty_print=True).decode().strip()
                 except Exception:
                     config_xml = reply.data_xml
                 return {"success": True, "host": conn["host"], "source": args.source, "config_format": fmt, "config": config_xml}
