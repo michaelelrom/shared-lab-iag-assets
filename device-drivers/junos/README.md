@@ -120,6 +120,26 @@ already holds the lock, the default behavior is a 30-second wait with
 | `--lock-timeout` | `30` | Max seconds to wait. `0` = fail immediately. |
 | `--lock-poll-interval` | `2.0` | Seconds between retries. |
 
+## Long-running commands (software add)
+
+`request system software add` takes 1-3 minutes on a vSRX. The default `timeout=30` will cause ncclient to abandon the session mid-install, leaving the device installing in the background with no usable response.
+
+Set `command_timeout` in the inventory to override the RPC wait timeout used by `run-command` without affecting `is-alive` or `get-config`:
+
+```json
+"itential_driver_options": {
+  "netconf": {
+    "port": 830,
+    "timeout": 30,
+    "command_timeout": 300,
+    "lock_timeout": 60,
+    "lock_poll_interval": 2
+  }
+}
+```
+
+`command_timeout` only applies to `run-command`. The connection handshake and all other operations still use `timeout`.
+
 The successful response includes `lock_wait_seconds` so you can see how
 long the operation actually blocked. Only `lock-denied` / `in-use` errors
 are retried — any other RPC failure short-circuits the wait immediately.

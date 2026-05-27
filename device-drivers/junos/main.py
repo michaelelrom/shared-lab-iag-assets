@@ -67,6 +67,8 @@ def run_command(conn, args) -> dict:
     results = []
     try:
         with _connect(conn) as m:
+            if conn.get("command_timeout") is not None:
+                m.timeout = conn["command_timeout"]
             for cmd in args.command:
                 try:
                     rpc_reply = m.command(command=cmd, format="text")
@@ -209,6 +211,7 @@ def _resolve_connection(args, node):
     password = pick(args.password, ("itential_password",))
     port = pick(args.port, ("itential_driver_options", "netconf", "port"), default=830)
     timeout = pick(args.timeout, ("itential_driver_options", "netconf", "timeout"), default=30)
+    command_timeout = pick(args.command_timeout, ("itential_driver_options", "netconf", "command_timeout"), default=None)
     lock_timeout = pick(args.lock_timeout, ("itential_driver_options", "netconf", "lock_timeout"), default=30)
     lock_poll_interval = pick(args.lock_poll_interval, ("itential_driver_options", "netconf", "lock_poll_interval"), default=2.0)
 
@@ -225,6 +228,7 @@ def _resolve_connection(args, node):
         "user": user,
         "password": password,
         "timeout": int(timeout),
+        "command_timeout": int(command_timeout) if command_timeout is not None else None,
         "lock_timeout": int(lock_timeout),
         "lock_poll_interval": float(lock_poll_interval),
     }
@@ -241,6 +245,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user", default=None, help="Override the inventory's itential_user")
     parser.add_argument("--password", default=None, help="Override the inventory's itential_password")
     parser.add_argument("--timeout", type=int, default=None, help="Override the netconf session timeout")
+    parser.add_argument("--command-timeout", type=int, default=None,
+                        help="Override RPC wait timeout for run-command (use for slow ops like software add)")
     parser.add_argument("--lock-timeout", type=int, default=None,
                         help="Override candidate-lock wait for send-command (0 = no wait)")
     parser.add_argument("--lock-poll-interval", type=float, default=None,
