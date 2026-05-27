@@ -28,6 +28,8 @@ import sys
 import time
 from xml.sax.saxutils import escape as _xml_escape
 
+import lxml.etree as _etree
+
 from ncclient import manager
 from ncclient.operations.rpc import RPCError
 from ncclient.transport.errors import AuthenticationError, SSHError
@@ -96,7 +98,12 @@ def get_config(conn, args) -> dict:
         with _connect(conn) as m:
             if fmt == "xml":
                 reply = m.get_config(source=args.source, filter=("subtree", args.filter) if args.filter else None)
-                return {"success": True, "host": conn["host"], "source": args.source, "config_format": fmt, "config": reply.data_xml}
+                try:
+                    tree = _etree.fromstring(reply.data_xml.encode())
+                    config_xml = _etree.tostring(tree, pretty_print=True).decode()
+                except Exception:
+                    config_xml = reply.data_xml
+                return {"success": True, "host": conn["host"], "source": args.source, "config_format": fmt, "config": config_xml}
             cmd = "show configuration"
             if fmt == "set":
                 cmd += " | display set"
