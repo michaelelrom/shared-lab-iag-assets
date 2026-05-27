@@ -141,11 +141,12 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
 
 
 def send_command(conn, args) -> dict:
+    device_name = conn.get("device_name") or conn["host"]
     if not args.command:
-        return {"success": False, "host": conn["host"], "error": "command is required for action=send-command"}
+        return {"success": False, "host": conn["host"], "device_name": device_name, "error": "command is required for action=send-command"}
     fmt = conn.get("config_format") or "set"
     if fmt not in _CONFIG_FORMATS:
-        return {"success": False, "host": conn["host"], "error": f"unsupported config_format {fmt!r}; choose from {_CONFIG_FORMATS}"}
+        return {"success": False, "host": conn["host"], "device_name": device_name, "error": f"unsupported config_format {fmt!r}; choose from {_CONFIG_FORMATS}"}
     try:
         with _connect(conn) as m:
             lock_wait = _acquire_candidate_lock(m, conn["lock_timeout"], conn["lock_poll_interval"])
@@ -163,6 +164,7 @@ def send_command(conn, args) -> dict:
                 return {
                     "success": True,
                     "host": conn["host"],
+                    "device_name": device_name,
                     "commands": args.command,
                     "lock_wait_seconds": round(lock_wait, 2),
                     "commit": commit_reply.xml,
@@ -175,6 +177,7 @@ def send_command(conn, args) -> dict:
                 return {
                     "success": False,
                     "host": conn["host"],
+                    "device_name": device_name,
                     "commands": args.command,
                     "error": str(inner),
                     "error_type": type(inner).__name__,
@@ -185,7 +188,7 @@ def send_command(conn, args) -> dict:
                 except Exception:
                     pass
     except Exception as e:
-        return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "host": conn["host"], "device_name": device_name, "error": str(e), "error_type": type(e).__name__}
 
 
 def reboot(conn, args) -> dict:
@@ -312,6 +315,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
     parser.add_argument("--config", default=None,
                         help="Multi-line set-style config block for send-command (gw-manager broker path passes 'config', not 'command')")
+    parser.add_argument("--config_content", "--config-content", dest="config_content", default=None,
+                        help="Multi-line set-style config block for itential_set_config (Config Manager remediation path)")
     parser.add_argument("--source", default=None,
                         help="Datastore for get-config (running|candidate); defaults to running. Empty string treated as unset.")
     parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
@@ -327,14 +332,18 @@ def _normalize_args(args):
     so downstream code can treat them as 'unset'. Also splits multi-line --command
     values into separate commands — the MOP command-template framework joins
     multiple template lines with newlines into one --command value."""
-    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config"):
+    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content"):
         if getattr(args, attr, None) == "":
             setattr(args, attr, None)
 
-    # gw-manager broker path passes --config instead of --command; fold it in
+    # broker paths pass --config or --config_content instead of --command; fold them in
     if args.config and not args.command:
         args.command = [args.config]
     args.config = None
+
+    if args.config_content and not args.command:
+        args.command = [args.config_content]
+    args.config_content = None
 
     if args.command:
         split = []
@@ -386,6 +395,39 @@ def _format_for_humans(result, op):
         if not result.get("success"):
             return f"ERROR: {result.get('error', 'config retrieval failed')}"
         return result.get("config", "")
+
+    if op == "send-command":
+        # Output the itential_set_config envelope that the automation_gateway adapter
+        # checks: response[r].task === 'itential_set_config response'
+        device_name = result.get("device_name") or result.get("host", "")
+        if result.get("success"):
+            commands = result.get("commands") or []
+            envelope = {
+                "role": "itential_set_config",
+                "task": "itential_set_config response",
+                "host": device_name,
+                "status": "SUCCESS",
+                "argument_warnings": None,
+                "results": {
+                    "message": "Configuration applied successfully",
+                    "lines_applied": len(commands),
+                    "status": "committed",
+                },
+            }
+        else:
+            envelope = {
+                "role": "itential_set_config",
+                "task": "itential_set_config response",
+                "host": device_name,
+                "status": "FAILED",
+                "argument_warnings": None,
+                "results": {
+                    "message": result.get("error", "Configuration failed"),
+                    "lines_applied": 0,
+                    "status": "failed",
+                },
+            }
+        return json.dumps(envelope)
 
     return json.dumps(result, indent=2, default=str)
 

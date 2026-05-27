@@ -78,6 +78,21 @@ decorators:
           type: string
       additionalProperties: false
 
+  - name: itential-set-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: itential_set_config inputs
+      description: >
+        Inputs for the itential_set_config service called by Config Manager remediation
+        via the automation_gateway adapter. Config Manager passes 'config_content'
+        (multi-line set commands); the script folds it into --command for NETCONF commit.
+      type: object
+      properties:
+        config_content:
+          description: Multi-line Junos set-style config block to apply and commit
+          type: string
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -169,6 +184,18 @@ services:
     working-directory: device-drivers/junos
     filename: main.py
     decorator: send-config-input
+    runtime:
+      env:
+        JUNOS_OP: send-command
+    tags: [driver, junos, netconf, broker]
+
+  - name: itential_set_config
+    type: python-script
+    description: Junos NETCONF — Config Manager remediation via automation_gateway adapter (config_content input, itential_set_config envelope output)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: itential-set-config-input
     runtime:
       env:
         JUNOS_OP: send-command
