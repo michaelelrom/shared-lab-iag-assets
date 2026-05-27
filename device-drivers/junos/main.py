@@ -352,14 +352,7 @@ def _format_for_humans(result, op):
     is-alive outputs a JSON boolean so Config Manager can parse it directly.
     Other ops keep the JSON envelope — they don't have natural text output."""
     if op == "is-alive":
-        alive = result.get("alive", False)
-        return json.dumps({
-            "connectivity": alive,
-            "response": alive,
-            "name": result.get("device_name", result.get("host", "")),
-            "host": result.get("host", ""),
-            "alive": alive,
-        })
+        return "true" if result.get("alive", False) else "false"
 
     if op == "run-command":
         results = result.get("results") or []
