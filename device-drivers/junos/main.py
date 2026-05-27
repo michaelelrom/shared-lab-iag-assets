@@ -26,6 +26,7 @@ import json
 import os
 import sys
 import time
+from xml.sax.saxutils import escape as _xml_escape
 
 from ncclient import manager
 from ncclient.operations.rpc import RPCError
@@ -145,17 +146,24 @@ def send_command(conn, args) -> dict:
 
 
 def reboot(conn, args) -> dict:
+    rpc_completed = False
+    rpc_result = {}
     try:
         with _connect(conn) as m:
             rpc = "<request-reboot>"
             if args.at:
-                rpc += f"<at>{args.at}</at>"
+                rpc += f"<at>{_xml_escape(args.at)}</at>"
             if args.message:
-                rpc += f"<message>{args.message}</message>"
+                rpc += f"<message>{_xml_escape(args.message)}</message>"
             rpc += "</request-reboot>"
             reply = m.rpc(rpc)
-            return {"success": True, "host": conn["host"], "at": args.at, "response": reply.xml}
+            rpc_completed = True
+            rpc_result = {"success": True, "host": conn["host"], "at": args.at, "response": reply.xml}
+        return rpc_result
     except Exception as e:
+        if rpc_completed:
+            # RPC reply was received; session closed during cleanup because device is rebooting.
+            return rpc_result
         return {"success": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
 
 
