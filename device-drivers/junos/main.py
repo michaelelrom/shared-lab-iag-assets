@@ -50,6 +50,7 @@ def _connect(conn):
 
 
 def is_alive(conn, args) -> dict:
+    device_name = conn.get("device_name") or conn["host"]
     try:
         with _connect(conn) as m:
             if conn.get("command_timeout") is not None:
@@ -58,13 +59,13 @@ def is_alive(conn, args) -> dict:
                 rpc_reply = m.command(command="show version", format="text")
                 output_nodes = rpc_reply.xpath(".//output")
                 output = output_nodes[0].text if output_nodes else ""
-                return {"success": True, "alive": True, "host": conn["host"], "output": output or ""}
+                return {"success": True, "alive": True, "host": conn["host"], "device_name": device_name, "output": output or ""}
             except RPCError as e:
-                return {"success": False, "alive": False, "host": conn["host"], "error": str(e)}
+                return {"success": False, "alive": False, "host": conn["host"], "device_name": device_name, "error": str(e)}
     except (AuthenticationError, SSHError) as e:
-        return {"success": False, "alive": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "alive": False, "host": conn["host"], "device_name": device_name, "error": str(e), "error_type": type(e).__name__}
     except Exception as e:
-        return {"success": False, "alive": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
+        return {"success": False, "alive": False, "host": conn["host"], "device_name": device_name, "error": str(e), "error_type": type(e).__name__}
 
 
 def run_command(conn, args) -> dict:
@@ -283,6 +284,7 @@ def _resolve_connection(args, node):
         "config_format": str(config_format) if config_format is not None else None,
         "lock_timeout": int(lock_timeout),
         "lock_poll_interval": float(lock_poll_interval),
+        "device_name": (node or {}).get("name") or host,
     }
 
 
@@ -350,7 +352,16 @@ def _format_for_humans(result, op):
     is-alive outputs a JSON boolean so Config Manager can parse it directly.
     Other ops keep the JSON envelope — they don't have natural text output."""
     if op == "is-alive":
-        return json.dumps({"connectivity": result.get("alive", False)})
+        alive = result.get("alive", False)
+        return json.dumps([{
+            "name": result.get("device_name", result.get("host", "")),
+            "host": result.get("host", ""),
+            "success": alive,
+            "start_time": "",
+            "end_time": "",
+            "elapsed_time": "0.000s",
+            "alive": alive,
+        }])
 
     if op == "run-command":
         results = result.get("results") or []
