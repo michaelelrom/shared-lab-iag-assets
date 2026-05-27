@@ -22,7 +22,6 @@ when both are present — useful for local testing without piping JSON.
 """
 
 import argparse
-import datetime
 import json
 import os
 import sys
@@ -53,12 +52,15 @@ def _connect(conn):
 def is_alive(conn, args) -> dict:
     try:
         with _connect(conn) as m:
-            return {
-                "success": True,
-                "alive": bool(m.connected),
-                "session_id": m.session_id,
-                "host": conn["host"],
-            }
+            if conn.get("command_timeout") is not None:
+                m.timeout = conn["command_timeout"]
+            try:
+                rpc_reply = m.command(command="show version", format="text")
+                output_nodes = rpc_reply.xpath(".//output")
+                output = output_nodes[0].text if output_nodes else ""
+                return {"success": True, "alive": True, "host": conn["host"], "output": output or ""}
+            except RPCError as e:
+                return {"success": False, "alive": False, "host": conn["host"], "error": str(e)}
     except (AuthenticationError, SSHError) as e:
         return {"success": False, "alive": False, "host": conn["host"], "error": str(e), "error_type": type(e).__name__}
     except Exception as e:
@@ -348,16 +350,9 @@ def _format_for_humans(result, op):
     is-alive outputs a JSON boolean so Config Manager can parse it directly.
     Other ops keep the JSON envelope — they don't have natural text output."""
     if op == "is-alive":
-        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        return json.dumps([{
-            "name": result.get("host", ""),
-            "alive": result.get("alive", False),
-            "success": result.get("success", False),
-            "host": result.get("host", ""),
-            "start_time": now,
-            "end_time": now,
-            "elapsed_time": "0.000s",
-        }])
+        if not result.get("success"):
+            return f"ERROR: {result.get('error', 'connection failed')}"
+        return result.get("output", "")
 
     if op == "run-command":
         results = result.get("results") or []
