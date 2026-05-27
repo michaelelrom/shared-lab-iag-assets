@@ -9,9 +9,9 @@ edit import.yml → PR → merge to main
         │
         ▼
 GitHub Actions (.github/workflows/deploy-iag5.yml)
-        │  OIDC → assume gha-deploy-iag5 in account 623933009299
+        │  OIDC → assume gha-deploy-iag5 in account
         ▼
-AWS SSM send-command → IAG5 EC2 (i-0dcf9db60fabecc0d)
+AWS SSM send-command → IAG5 EC2
         │
         ▼
 /opt/gateway/deploy.sh fetches import.yml at the merged commit
