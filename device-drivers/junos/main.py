@@ -353,15 +353,13 @@ def _format_for_humans(result, op):
     Other ops keep the JSON envelope — they don't have natural text output."""
     if op == "is-alive":
         alive = result.get("alive", False)
-        return json.dumps([{
+        return json.dumps({
+            "connectivity": alive,
+            "response": alive,
             "name": result.get("device_name", result.get("host", "")),
             "host": result.get("host", ""),
-            "success": alive,
-            "start_time": "",
-            "end_time": "",
-            "elapsed_time": "0.000s",
             "alive": alive,
-        }])
+        })
 
     if op == "run-command":
         results = result.get("results") or []
