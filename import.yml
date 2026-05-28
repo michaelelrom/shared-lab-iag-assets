@@ -233,6 +233,6 @@ services:
     decorator: junos-netconf-set-config-input
     runtime:
       env:
-        JUNOS_OP: send-command
+        JUNOS_OP: set-config
     tags: [driver, junos, netconf, broker]
 

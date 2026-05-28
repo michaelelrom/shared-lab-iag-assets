@@ -258,6 +258,7 @@ _DISPATCH = {
     "run-command": run_command,
     "get-config": get_config,
     "send-command": send_command,
+    "set-config": send_command,   # broker alias — same logic, distinct output envelope
     "reboot": reboot,
 }
 
@@ -334,7 +335,7 @@ def _resolve_connection(args, node):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Junos NETCONF operations for IAG5")
     parser.add_argument("--op", default=os.environ.get("JUNOS_OP"),
-                        choices=sorted(_DISPATCH.keys()),
+                        choices=["get-config", "is-alive", "reboot", "run-command", "send-command", "set-config"],
                         help="Operation to perform. Defaults to JUNOS_OP env var.")
 
     parser.add_argument("--host", default=None, help="Override the inventory's itential_host")
@@ -491,6 +492,21 @@ def _format_for_humans(result, op):
         if not result.get("success"):
             return f"ERROR: {result.get('error', 'config retrieval failed')}"
         return result.get("config", "")
+
+    if op == "set-config":
+        commands = result.get("commands") or []
+        if result.get("success"):
+            return json.dumps({
+                "message": "Configuration applied successfully",
+                "lines_applied": len(commands),
+                "status": "applied",
+            })
+        else:
+            return json.dumps({
+                "message": result.get("error", "Configuration failed"),
+                "lines_applied": 0,
+                "status": "failed",
+            })
 
     return json.dumps(result, indent=2, default=str)
 
