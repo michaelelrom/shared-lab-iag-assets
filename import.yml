@@ -85,18 +85,16 @@ decorators:
       title: junos-netconf-set-config inputs
       description: >
         Inputs for the Config Manager remediation broker (junos-netconf-set-config).
-        IM iag5-service handler merges action.action_parameters with runtimeParameters,
-        so both 'config' (static action param, may be empty/changes array) and
-        'config_content' may arrive. No additionalProperties restriction so extra
-        action_parameters pass through without validation errors.
+        adapter-inventory_manager passes the changes array as runtimeParams.config
+        (a JSON array, not a string). No type constraint on config so IAG5 does not
+        attempt to validate the array value as a string and fail. No additionalProperties
+        restriction so extra action_parameters pass through without validation errors.
       type: object
       properties:
         config_content:
           description: Config Manager changes extracted as set-style config lines (runtime)
-          type: string
         config:
-          description: Static config from action_parameters or changes array from adapter (runtime)
-          type: string
+          description: Changes array [{new, old, parents}] from adapter-inventory_manager, or set-style string
 
   - name: junos-netconf-send-command-input
     schema:
