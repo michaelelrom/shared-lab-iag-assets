@@ -94,6 +94,25 @@ decorators:
           type: string
       additionalProperties: false
 
+  - name: junos-netconf-send-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf-send-command inputs
+      description: >
+        Inputs for junos-netconf-send-command called by the IM iag5-service action handler.
+        mergedParameters = action.action_parameters merged with runtimeParameters, so both
+        'config' (static action param, may be empty) and 'config_content' (runtime, actual
+        config lines) may arrive together. No additionalProperties restriction so extra
+        action_parameters pass through without validation errors.
+      type: object
+      properties:
+        config_content:
+          description: Config Manager changes extracted as set-style config lines (runtime)
+          type: string
+        config:
+          description: Static config from action_parameters (empty/unused at runtime)
+          type: string
+
   - name: cm-set-config-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -216,7 +235,7 @@ services:
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: itential-set-config-input
+    decorator: junos-netconf-send-command-input
     runtime:
       env:
         JUNOS_OP: send-command
