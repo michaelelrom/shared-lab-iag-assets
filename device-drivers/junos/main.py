@@ -355,10 +355,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
     parser.add_argument("--commands", default=None,
                         help="JSON array of set-style config commands for junos-netconf-send-command workflow task")
-    parser.add_argument("--dry_run", "--dry-run", dest="dry_run", default=None,
-                        help="Validate candidate config without committing (true/false)")
-    parser.add_argument("--confirmed", default=None,
-                        help="Use confirmed commit — auto-rolls back unless a second commit arrives (true/false)")
+    parser.add_argument("--dry_run", "--dry-run", dest="dry_run", nargs="?", const=True, default=None,
+                        help="Validate candidate config without committing (flag or true/false)")
+    parser.add_argument("--confirmed", nargs="?", const=True, default=None,
+                        help="Use confirmed commit — auto-rolls back unless a second commit arrives (flag or true/false)")
     parser.add_argument("--confirm_timeout", "--confirm-timeout", dest="confirm_timeout", type=int, default=None,
                         help="Minutes before auto-rollback for confirmed commit (default 10)")
     parser.add_argument("--config", default=None,
