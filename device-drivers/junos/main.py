@@ -134,7 +134,14 @@ def _acquire_candidate_lock(m, timeout: int, poll_interval: float) -> float:
             return time.monotonic() - start
         except RPCError as e:
             msg = str(e).lower()
-            transient = "lock-denied" in msg or "lock denied" in msg or "in-use" in msg or "in use" in msg
+            transient = (
+                getattr(e, 'tag', None) == 'lock-denied'
+                or "lock-denied" in msg
+                or "lock denied" in msg
+                or "in-use" in msg
+                or "in use" in msg
+                or "configuration database locked" in msg
+            )
             if not transient or timeout == 0 or time.monotonic() >= deadline:
                 raise
             time.sleep(poll_interval)
