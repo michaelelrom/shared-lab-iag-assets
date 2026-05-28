@@ -357,7 +357,18 @@ def _normalize_args(args):
 
     # broker paths pass --config or --config_content instead of --command; fold them in
     if args.config and not args.command:
-        args.command = [args.config]
+        # adapter-inventory_manager passes the CM changes array as --config; detect and extract
+        config_val = args.config.strip()
+        if config_val.startswith('['):
+            try:
+                changes_list = json.loads(config_val)
+                lines = [str(c["new"]) for c in changes_list if c.get("new") and str(c.get("new", "")).strip()]
+                if lines:
+                    args.command = lines
+            except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
+                args.command = [args.config]
+        else:
+            args.command = [args.config]
     args.config = None
 
     if args.config_content and not args.command:
