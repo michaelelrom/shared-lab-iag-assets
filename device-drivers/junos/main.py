@@ -164,8 +164,11 @@ def send_command(conn, args) -> dict:
                 try:
                     commit_xml = commit_reply.xml
                 except AttributeError:
-                    # Junos ncclient returns NCElement (lxml ElementBase), not RPCReply
-                    commit_xml = _etree.tostring(commit_reply, encoding='unicode')
+                    # Junos ncclient returns NCElement (not RPCReply); str() gives XML
+                    try:
+                        commit_xml = str(commit_reply)
+                    except Exception:
+                        commit_xml = ''
                 return {
                     "success": True,
                     "host": conn["host"],
