@@ -178,7 +178,7 @@ def send_command(conn, args) -> dict:
                     except AttributeError:
                         validate_xml = str(validate_reply)
                     m.discard_changes()
-                    return {
+                    result = {
                         "success": True,
                         "host": conn["host"],
                         "device_name": device_name,
@@ -187,6 +187,9 @@ def send_command(conn, args) -> dict:
                         "dry_run": True,
                         "validate": validate_xml,
                     }
+                    if hasattr(args, '_changes_list'):
+                        result["_changes_list"] = args._changes_list
+                    return result
 
                 commit_reply = m.commit(confirmed=confirmed, timeout=confirm_timeout if confirmed else None)
                 try:
@@ -208,6 +211,8 @@ def send_command(conn, args) -> dict:
                 if confirmed:
                     result["confirmed"] = True
                     result["confirm_timeout_minutes"] = confirm_timeout
+                if hasattr(args, '_changes_list'):
+                    result["_changes_list"] = args._changes_list
                 return result
             except Exception as inner:
                 try:
@@ -417,9 +422,23 @@ def _normalize_args(args):
         if config_val.startswith('['):
             try:
                 changes_list = json.loads(config_val)
-                lines = [str(c["new"]) for c in changes_list if c.get("new") and str(c.get("new", "")).strip()]
+                lines = []
+                for c in changes_list:
+                    new_val = str(c.get("new", "")).strip()
+                    old_val = str(c.get("old", "")).strip()
+                    if new_val:
+                        lines.append(new_val)
+                    elif old_val:
+                        # Deletion: convert "set x y z" → "delete x y z"
+                        if old_val.startswith("set "):
+                            lines.append("delete " + old_val[4:])
+                        elif not old_val.startswith("delete "):
+                            lines.append("delete " + old_val)
+                        else:
+                            lines.append(old_val)
                 if lines:
                     args.command = lines
+                    args._changes_list = changes_list
             except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
                 args.command = [args.config]
         else:
@@ -434,10 +453,23 @@ def _normalize_args(args):
     if args.changes and not args.command:
         raw = args.changes
         try:
-            changes = json.loads(raw) if isinstance(raw, str) else raw
-            lines = [str(c["new"]) for c in changes if c.get("new") and str(c.get("new", "")).strip()]
+            changes_list = json.loads(raw) if isinstance(raw, str) else raw
+            lines = []
+            for c in changes_list:
+                new_val = str(c.get("new", "")).strip()
+                old_val = str(c.get("old", "")).strip()
+                if new_val:
+                    lines.append(new_val)
+                elif old_val:
+                    if old_val.startswith("set "):
+                        lines.append("delete " + old_val[4:])
+                    elif not old_val.startswith("delete "):
+                        lines.append("delete " + old_val)
+                    else:
+                        lines.append(old_val)
             if lines:
                 args.command = lines
+                args._changes_list = changes_list
         except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
             pass
     args.changes = None
@@ -494,19 +526,20 @@ def _format_for_humans(result, op):
         return result.get("config", "")
 
     if op == "set-config":
-        commands = result.get("commands") or []
         if result.get("success"):
-            return json.dumps({
-                "message": "Configuration applied successfully",
-                "lines_applied": len(commands),
-                "status": "applied",
-            })
+            changes_list = result.get("_changes_list")
+            if changes_list:
+                output = [
+                    {"result": True, "parents": c.get("parents", []), "old": c.get("old", ""), "new": c.get("new", "")}
+                    for c in changes_list
+                ]
+            else:
+                # Fallback when no original changes object available (e.g. --config_content path)
+                output = [{"result": True, "parents": [], "old": "", "new": cmd} for cmd in (result.get("commands") or [])]
+            return json.dumps(output)
         else:
-            return json.dumps({
-                "message": result.get("error", "Configuration failed"),
-                "lines_applied": 0,
-                "status": "failed",
-            })
+            print(result.get("error", "Configuration failed"), file=sys.stderr)
+            return "[]"
 
     return json.dumps(result, indent=2, default=str)
 
