@@ -492,39 +492,6 @@ def _format_for_humans(result, op):
             return f"ERROR: {result.get('error', 'config retrieval failed')}"
         return result.get("config", "")
 
-    if op == "send-command":
-        # Output the itential_set_config envelope that the automation_gateway adapter
-        # checks: response[r].task === 'itential_set_config response'
-        device_name = result.get("device_name") or result.get("host", "")
-        if result.get("success"):
-            commands = result.get("commands") or []
-            envelope = {
-                "role": "itential_set_config",
-                "task": "itential_set_config response",
-                "host": device_name,
-                "status": "SUCCESS",
-                "argument_warnings": None,
-                "results": {
-                    "message": "Configuration applied successfully",
-                    "lines_applied": len(commands),
-                    "status": "committed",
-                },
-            }
-        else:
-            envelope = {
-                "role": "itential_set_config",
-                "task": "itential_set_config response",
-                "host": device_name,
-                "status": "FAILED",
-                "argument_warnings": None,
-                "results": {
-                    "message": result.get("error", "Configuration failed"),
-                    "lines_applied": 0,
-                    "status": "failed",
-                },
-            }
-        return json.dumps(envelope)
-
     return json.dumps(result, indent=2, default=str)
 
 
