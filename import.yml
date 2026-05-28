@@ -50,21 +50,6 @@ decorators:
       required: [command]
       additionalProperties: false
 
-  - name: send-config-input
-    schema:
-      $schema: https://json-schema.org/draft/2020-12/schema
-      title: send-config broker inputs
-      description: >
-        Broker service called by gw-manager's sendConfig path (Config Manager
-        remediation). gw-manager passes 'config' (multi-line set commands);
-        the script folds it into --command for NETCONF commit.
-      type: object
-      properties:
-        config:
-          description: Multi-line Junos set-style config block to apply and commit
-          type: string
-      additionalProperties: false
-
   - name: junos-netconf-reboot-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -112,26 +97,6 @@ decorators:
         config:
           description: Static config from action_parameters (empty/unused at runtime)
           type: string
-
-  - name: cm-set-config-input
-    schema:
-      $schema: https://json-schema.org/draft/2020-12/schema
-      title: cm-set-config inputs
-      description: >
-        Inputs for the set-config service called by Config Manager remediation.
-        Config Manager passes a 'changes' array of {parents, old, new} objects;
-        the script extracts non-null 'new' values as set-style config lines.
-      type: object
-      properties:
-        changes:
-          description: Config Manager changes array — each item has parents, old, new
-          type: array
-          items:
-            type: object
-        options:
-          description: Config Manager remediation options (e.g. backupDevice)
-          type: object
-      additionalProperties: false
 
 services:
   - name: test-playbook
@@ -217,18 +182,6 @@ services:
         JUNOS_OP: reboot
     tags: [driver, junos, netconf]
 
-  - name: send-config
-    type: python-script
-    description: Junos NETCONF — broker send-config entry point for Config Manager remediation
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
-    filename: main.py
-    decorator: send-config-input
-    runtime:
-      env:
-        JUNOS_OP: send-command
-    tags: [driver, junos, netconf, broker]
-
   - name: junos-netconf-send-command
     type: python-script
     description: Junos NETCONF — Config Manager broker remediation via IM iag5-service action (config_content input)
@@ -253,14 +206,3 @@ services:
         JUNOS_OP: send-command
     tags: [driver, junos, netconf, broker]
 
-  - name: set-config
-    type: python-script
-    description: Junos NETCONF — Config Manager remediation via IM device broker (accepts CM changes array)
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
-    filename: main.py
-    decorator: cm-set-config-input
-    runtime:
-      env:
-        JUNOS_OP: send-command
-    tags: [driver, junos, netconf, broker]
