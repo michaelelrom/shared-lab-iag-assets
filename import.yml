@@ -50,10 +50,15 @@ decorators:
         lock_timeout:
           description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
           type: integer
-        config_format:
-          description: Config format — set (default), text (curly-brace), xml, json
-          type: string
-          enum: [set, text, xml, json]
+        dry_run:
+          description: Validate config against the candidate datastore without committing (true = validate only)
+          type: boolean
+        confirmed:
+          description: Use a confirmed commit — device auto-rolls back unless a second commit arrives within confirm_timeout minutes
+          type: boolean
+        confirm_timeout:
+          description: Minutes before auto-rollback for a confirmed commit (default 10; only used when confirmed is true)
+          type: integer
       additionalProperties: false
 
   - name: junos-netconf-reboot-input
@@ -103,10 +108,15 @@ decorators:
         lock_timeout:
           description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
           type: integer
-        config_format:
-          description: Config format — set (default), text (curly-brace), xml, json
-          type: string
-          enum: [set, text, xml, json]
+        dry_run:
+          description: Validate config against the candidate datastore without committing (true = validate only)
+          type: boolean
+        confirmed:
+          description: Use a confirmed commit — device auto-rolls back unless a second commit arrives within confirm_timeout minutes
+          type: boolean
+        confirm_timeout:
+          description: Minutes before auto-rollback for a confirmed commit (default 10; only used when confirmed is true)
+          type: integer
       required: [commands]
       additionalProperties: false
 

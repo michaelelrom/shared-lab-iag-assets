@@ -154,6 +154,9 @@ def send_command(conn, args) -> dict:
     fmt = conn.get("config_format") or "set"
     if fmt not in _CONFIG_FORMATS:
         return {"success": False, "host": conn["host"], "device_name": device_name, "error": f"unsupported config_format {fmt!r}; choose from {_CONFIG_FORMATS}"}
+    dry_run = getattr(args, "dry_run", False)
+    confirmed = getattr(args, "confirmed", False)
+    confirm_timeout = getattr(args, "confirm_timeout", None) or 10
     try:
         with _connect(conn) as m:
             lock_wait = _acquire_candidate_lock(m, conn["lock_timeout"], conn["lock_poll_interval"])
@@ -167,7 +170,25 @@ def send_command(conn, args) -> dict:
                     m.load_configuration(format="xml", config=config_text)
                 elif fmt == "json":
                     m.load_configuration(format="json", config=config_text)
-                commit_reply = m.commit()
+
+                if dry_run:
+                    validate_reply = m.validate(source="candidate")
+                    try:
+                        validate_xml = validate_reply.xml
+                    except AttributeError:
+                        validate_xml = str(validate_reply)
+                    m.discard_changes()
+                    return {
+                        "success": True,
+                        "host": conn["host"],
+                        "device_name": device_name,
+                        "commands": args.command,
+                        "lock_wait_seconds": round(lock_wait, 2),
+                        "dry_run": True,
+                        "validate": validate_xml,
+                    }
+
+                commit_reply = m.commit(confirmed=confirmed, timeout=confirm_timeout if confirmed else None)
                 try:
                     commit_xml = commit_reply.xml
                 except AttributeError:
@@ -176,7 +197,7 @@ def send_command(conn, args) -> dict:
                         commit_xml = str(commit_reply)
                     except Exception:
                         commit_xml = ''
-                return {
+                result = {
                     "success": True,
                     "host": conn["host"],
                     "device_name": device_name,
@@ -184,6 +205,10 @@ def send_command(conn, args) -> dict:
                     "lock_wait_seconds": round(lock_wait, 2),
                     "commit": commit_xml,
                 }
+                if confirmed:
+                    result["confirmed"] = True
+                    result["confirm_timeout_minutes"] = confirm_timeout
+                return result
             except Exception as inner:
                 try:
                     m.discard_changes()
@@ -330,6 +355,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
     parser.add_argument("--commands", default=None,
                         help="JSON array of set-style config commands for junos-netconf-send-command workflow task")
+    parser.add_argument("--dry_run", "--dry-run", dest="dry_run", default=None,
+                        help="Validate candidate config without committing (true/false)")
+    parser.add_argument("--confirmed", default=None,
+                        help="Use confirmed commit — auto-rolls back unless a second commit arrives (true/false)")
+    parser.add_argument("--confirm_timeout", "--confirm-timeout", dest="confirm_timeout", type=int, default=None,
+                        help="Minutes before auto-rollback for confirmed commit (default 10)")
     parser.add_argument("--config", default=None,
                         help="Multi-line set-style config block for junos-netconf-send-config workflow task")
     parser.add_argument("--config_content", "--config-content", dest="config_content", default=None,
@@ -356,6 +387,14 @@ def _normalize_args(args):
     for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content", "commands", "options"):
         if getattr(args, attr, None) == "":
             setattr(args, attr, None)
+
+    # IAG5 passes booleans as "true"/"false" strings
+    for attr in ("dry_run", "confirmed"):
+        val = getattr(args, attr, None)
+        if val is None or val == "":
+            setattr(args, attr, False)
+        elif isinstance(val, str):
+            setattr(args, attr, val.lower() in ("true", "1", "yes"))
 
     # junos-netconf-send-command workflow task: --commands='["set ...", "set ..."]' (JSON array)
     if args.commands and not args.command:
