@@ -161,13 +161,18 @@ def send_command(conn, args) -> dict:
                 elif fmt == "json":
                     m.load_configuration(format="json", config=config_text)
                 commit_reply = m.commit()
+                try:
+                    commit_xml = commit_reply.xml
+                except AttributeError:
+                    # Junos ncclient returns NCElement (lxml ElementBase), not RPCReply
+                    commit_xml = _etree.tostring(commit_reply, encoding='unicode')
                 return {
                     "success": True,
                     "host": conn["host"],
                     "device_name": device_name,
                     "commands": args.command,
                     "lock_wait_seconds": round(lock_wait, 2),
-                    "commit": commit_reply.xml,
+                    "commit": commit_xml,
                 }
             except Exception as inner:
                 try:
