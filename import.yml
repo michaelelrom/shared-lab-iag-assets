@@ -45,7 +45,10 @@ decorators:
       type: object
       properties:
         config:
-          description: Multi-line Junos set-style config block to apply and commit
+          description: Multi-line Junos set-style config block to apply and commit (preferred — matches gw-manager sendConfig)
+          type: string
+        command:
+          description: Single set-style config command (legacy alias for config; use config for multi-line blocks)
           type: string
         lock_timeout:
           description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
@@ -54,7 +57,6 @@ decorators:
           description: Config format — set (default), text (curly-brace), xml, json
           type: string
           enum: [set, text, xml, json]
-      required: [config]
       additionalProperties: false
 
   - name: junos-netconf-reboot-input
