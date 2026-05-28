@@ -210,6 +210,18 @@ services:
         JUNOS_OP: send-command
     tags: [driver, junos, netconf, broker]
 
+  - name: junos-netconf-send-command
+    type: python-script
+    description: Junos NETCONF — Config Manager broker remediation via IM iag5-service action (config_content input)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: itential-set-config-input
+    runtime:
+      env:
+        JUNOS_OP: send-command
+    tags: [driver, junos, netconf, broker]
+
   - name: itential_set_config
     type: python-script
     description: Junos NETCONF — Config Manager remediation via automation_gateway adapter (config_content input, itential_set_config envelope output)
