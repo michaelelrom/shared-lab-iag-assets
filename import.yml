@@ -45,10 +45,7 @@ decorators:
       type: object
       properties:
         config:
-          description: Multi-line Junos set-style config block to apply and commit (preferred — matches gw-manager sendConfig)
-          type: string
-        command:
-          description: Single set-style config command (legacy alias for config; use config for multi-line blocks)
+          description: Multi-line Junos set-style config block to apply and commit
           type: string
         lock_timeout:
           description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
