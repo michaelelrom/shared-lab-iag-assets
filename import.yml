@@ -44,10 +44,17 @@ decorators:
       title: junos-netconf-send-config inputs
       type: object
       properties:
-        command:
-          description: Junos set-style config command to apply and commit (e.g. "set interfaces ge-0/0/0 description test")
+        config:
+          description: Multi-line Junos set-style config block to apply and commit
           type: string
-      required: [command]
+        lock_timeout:
+          description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
+          type: integer
+        config_format:
+          description: Config format — set (default), text (curly-brace), xml, json
+          type: string
+          enum: [set, text, xml, json]
+      required: [config]
       additionalProperties: false
 
   - name: junos-netconf-reboot-input
@@ -64,15 +71,15 @@ decorators:
           type: string
       additionalProperties: false
 
-  - name: junos-netconf-send-command-input
+  - name: junos-netconf-set-config-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
-      title: junos-netconf-send-command inputs
+      title: junos-netconf-set-config inputs
       description: >
-        Inputs for junos-netconf-send-command called by the IM iag5-service action handler.
-        mergedParameters = action.action_parameters merged with runtimeParameters, so both
-        'config' (static action param, may be empty) and 'config_content' (runtime, actual
-        config lines) may arrive together. No additionalProperties restriction so extra
+        Inputs for the Config Manager remediation broker (junos-netconf-set-config).
+        IM iag5-service handler merges action.action_parameters with runtimeParameters,
+        so both 'config' (static action param, may be empty/changes array) and
+        'config_content' may arrive. No additionalProperties restriction so extra
         action_parameters pass through without validation errors.
       type: object
       properties:
@@ -80,8 +87,29 @@ decorators:
           description: Config Manager changes extracted as set-style config lines (runtime)
           type: string
         config:
-          description: Static config from action_parameters (empty/unused at runtime)
+          description: Static config from action_parameters or changes array from adapter (runtime)
           type: string
+
+  - name: junos-netconf-send-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: junos-netconf-send-command inputs
+      type: object
+      properties:
+        commands:
+          description: Array of Junos set-style config commands to apply and commit
+          type: array
+          items:
+            type: string
+        lock_timeout:
+          description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
+          type: integer
+        config_format:
+          description: Config format — set (default), text (curly-brace), xml, json
+          type: string
+          enum: [set, text, xml, json]
+      required: [commands]
+      additionalProperties: false
 
 services:
   - name: test-playbook
@@ -145,11 +173,23 @@ services:
 
   - name: junos-netconf-send-config
     type: python-script
-    description: Junos NETCONF — apply set-style config with candidate lock and commit
+    description: Junos NETCONF — apply multi-line set-style config block with candidate lock and commit (workflow task)
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
     decorator: junos-netconf-send-config-input
+    runtime:
+      env:
+        JUNOS_OP: send-command
+    tags: [driver, junos, netconf]
+
+  - name: junos-netconf-send-command
+    type: python-script
+    description: Junos NETCONF — apply an array of set-style config commands with candidate lock and commit (workflow task)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/junos
+    filename: main.py
+    decorator: junos-netconf-send-command-input
     runtime:
       env:
         JUNOS_OP: send-command
@@ -167,13 +207,13 @@ services:
         JUNOS_OP: reboot
     tags: [driver, junos, netconf]
 
-  - name: junos-netconf-send-command
+  - name: junos-netconf-set-config
     type: python-script
-    description: Junos NETCONF — Config Manager broker remediation via IM iag5-service action (config_content input)
+    description: Junos NETCONF — Config Manager remediation via IM iag5-service action (broker entry point)
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: junos-netconf-send-command-input
+    decorator: junos-netconf-set-config-input
     runtime:
       env:
         JUNOS_OP: send-command

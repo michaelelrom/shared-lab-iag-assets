@@ -319,19 +319,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=int, default=None, help="Override the netconf session timeout")
     parser.add_argument("--command-timeout", type=int, default=None,
                         help="Override RPC wait timeout for run-command (use for slow ops like software add)")
-    parser.add_argument("--config-format", default=None, choices=list(_CONFIG_FORMATS),
+    parser.add_argument("--config_format", "--config-format", dest="config_format", default=None, choices=list(_CONFIG_FORMATS),
                         help="Config format for get-config/send-command: xml (default), text (curly), set, json")
-    parser.add_argument("--lock-timeout", type=int, default=None,
+    parser.add_argument("--lock_timeout", "--lock-timeout", dest="lock_timeout", type=int, default=None,
                         help="Override candidate-lock wait for send-command (0 = no wait)")
     parser.add_argument("--lock-poll-interval", type=float, default=None,
                         help="Override candidate-lock retry interval")
 
     parser.add_argument("--command", action="append", default=None,
                         help="Operational or set-style command (repeatable; multi-line values are split into separate commands)")
+    parser.add_argument("--commands", default=None,
+                        help="JSON array of set-style config commands for junos-netconf-send-command workflow task")
     parser.add_argument("--config", default=None,
-                        help="Multi-line set-style config block for send-command (gw-manager broker path passes 'config', not 'command')")
+                        help="Multi-line set-style config block for junos-netconf-send-config workflow task")
     parser.add_argument("--config_content", "--config-content", dest="config_content", default=None,
-                        help="Multi-line set-style config block for itential_set_config (Config Manager remediation path)")
+                        help="Multi-line set-style config block (Config Manager remediation path)")
     parser.add_argument("--changes", default=None,
                         help="Config Manager changes array (JSON string) — extracts non-null 'new' values as config lines")
     parser.add_argument("--options", default=None,
@@ -351,9 +353,22 @@ def _normalize_args(args):
     so downstream code can treat them as 'unset'. Also splits multi-line --command
     values into separate commands — the MOP command-template framework joins
     multiple template lines with newlines into one --command value."""
-    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content", "options"):
+    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content", "commands", "options"):
         if getattr(args, attr, None) == "":
             setattr(args, attr, None)
+
+    # junos-netconf-send-command workflow task: --commands='["set ...", "set ..."]' (JSON array)
+    if args.commands and not args.command:
+        raw = args.commands
+        try:
+            cmds = json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(cmds, list):
+                args.command = [str(c) for c in cmds if str(c).strip()]
+            else:
+                args.command = [str(cmds)] if str(cmds).strip() else None
+        except (json.JSONDecodeError, TypeError):
+            args.command = [raw] if raw.strip() else None
+    args.commands = None
 
     # broker paths pass --config or --config_content instead of --command; fold them in
     if args.config and not args.command:
