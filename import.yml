@@ -31,6 +31,7 @@ decorators:
       properties:
         source:
           description: Datastore to read from (running or candidate)
+          type: string
           enum: [running, candidate]
         filter:
           description: Optional XML subtree filter
