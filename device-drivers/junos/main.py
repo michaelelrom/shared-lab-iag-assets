@@ -332,6 +332,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Multi-line set-style config block for send-command (gw-manager broker path passes 'config', not 'command')")
     parser.add_argument("--config_content", "--config-content", dest="config_content", default=None,
                         help="Multi-line set-style config block for itential_set_config (Config Manager remediation path)")
+    parser.add_argument("--changes", default=None,
+                        help="Config Manager changes array (JSON string) — extracts non-null 'new' values as config lines")
+    parser.add_argument("--options", default=None,
+                        help="Config Manager remediation options JSON (currently unused)")
     parser.add_argument("--source", default=None,
                         help="Datastore for get-config (running|candidate); defaults to running. Empty string treated as unset.")
     parser.add_argument("--filter", default=None, help="Optional subtree filter for get-config")
@@ -347,7 +351,7 @@ def _normalize_args(args):
     so downstream code can treat them as 'unset'. Also splits multi-line --command
     values into separate commands — the MOP command-template framework joins
     multiple template lines with newlines into one --command value."""
-    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content"):
+    for attr in ("source", "filter", "at", "message", "host", "user", "password", "config", "config_content", "options"):
         if getattr(args, attr, None) == "":
             setattr(args, attr, None)
 
@@ -359,6 +363,18 @@ def _normalize_args(args):
     if args.config_content and not args.command:
         args.command = [args.config_content]
     args.config_content = None
+
+    # Config Manager broker path: --changes '[{"parents":[],"old":...,"new":"set ..."}]'
+    if args.changes and not args.command:
+        raw = args.changes
+        try:
+            changes = json.loads(raw) if isinstance(raw, str) else raw
+            lines = [str(c["new"]) for c in changes if c.get("new") and str(c.get("new", "")).strip()]
+            if lines:
+                args.command = lines
+        except (json.JSONDecodeError, TypeError, KeyError, AttributeError):
+            pass
+    args.changes = None
 
     if args.command:
         split = []

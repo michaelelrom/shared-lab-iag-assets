@@ -94,6 +94,26 @@ decorators:
           type: string
       additionalProperties: false
 
+  - name: cm-set-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: cm-set-config inputs
+      description: >
+        Inputs for the set-config service called by Config Manager remediation.
+        Config Manager passes a 'changes' array of {parents, old, new} objects;
+        the script extracts non-null 'new' values as set-style config lines.
+      type: object
+      properties:
+        changes:
+          description: Config Manager changes array — each item has parents, old, new
+          type: array
+          items:
+            type: object
+        options:
+          description: Config Manager remediation options (e.g. backupDevice)
+          type: object
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -204,11 +224,11 @@ services:
 
   - name: set-config
     type: python-script
-    description: Junos NETCONF — Config Manager remediation via IM device broker (config_content input); named to match the IM built-in set-config broker action
+    description: Junos NETCONF — Config Manager remediation via IM device broker (accepts CM changes array)
     repository: shared-lab-iag-assets
     working-directory: device-drivers/junos
     filename: main.py
-    decorator: itential-set-config-input
+    decorator: cm-set-config-input
     runtime:
       env:
         JUNOS_OP: send-command
