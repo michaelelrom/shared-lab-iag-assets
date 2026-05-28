@@ -48,17 +48,21 @@ decorators:
           description: Multi-line Junos set-style config block to apply and commit
           type: string
         lock_timeout:
-          description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
+          description: Seconds to wait for the candidate datastore lock before failing (0 = fail immediately)
           type: integer
+          default: 30
         dry_run:
           description: Validate config against the candidate datastore without committing (true = validate only)
           type: boolean
+          default: false
         confirmed:
           description: Use a confirmed commit — device auto-rolls back unless a second commit arrives within confirm_timeout minutes
           type: boolean
+          default: false
         confirm_timeout:
-          description: Minutes before auto-rollback for a confirmed commit (default 10; only used when confirmed is true)
+          description: Minutes before auto-rollback for a confirmed commit (only used when confirmed is true)
           type: integer
+          default: 10
       additionalProperties: false
 
   - name: junos-netconf-reboot-input
@@ -106,17 +110,21 @@ decorators:
           items:
             type: string
         lock_timeout:
-          description: Seconds to wait for the candidate datastore lock before failing (default 30; 0 = fail immediately)
+          description: Seconds to wait for the candidate datastore lock before failing (0 = fail immediately)
           type: integer
+          default: 30
         dry_run:
           description: Validate config against the candidate datastore without committing (true = validate only)
           type: boolean
+          default: false
         confirmed:
           description: Use a confirmed commit — device auto-rolls back unless a second commit arrives within confirm_timeout minutes
           type: boolean
+          default: false
         confirm_timeout:
-          description: Minutes before auto-rollback for a confirmed commit (default 10; only used when confirmed is true)
+          description: Minutes before auto-rollback for a confirmed commit (only used when confirmed is true)
           type: integer
+          default: 10
       required: [commands]
       additionalProperties: false
 
