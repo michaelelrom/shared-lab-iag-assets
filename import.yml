@@ -10,6 +10,11 @@ repositories:
     url: https://github.com/michaelelrom/shared-lab-iag-assets.git
     reference: main
 
+  - name: itential-junos-driver
+    description: Official Itential Junos NETCONF driver
+    url: https://github.com/itential/assets.git
+    reference: feat/junos-iag5-netconf-driver
+
 decorators:
   - name: junos-netconf-run-command-input
     schema:
@@ -149,8 +154,8 @@ services:
   - name: junos-netconf-is-alive
     type: python-script
     description: Junos NETCONF — verify reachability via NETCONF capability exchange
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     runtime:
       env:
@@ -160,8 +165,8 @@ services:
   - name: junos-netconf-run-command
     type: python-script
     description: Junos NETCONF — execute operational CLI commands via <command/> RPC
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-run-command-input
     runtime:
@@ -172,8 +177,8 @@ services:
   - name: junos-netconf-get-config
     type: python-script
     description: Junos NETCONF — retrieve running or candidate configuration
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-get-config-input
     runtime:
@@ -184,8 +189,8 @@ services:
   - name: junos-netconf-send-config
     type: python-script
     description: Junos NETCONF — apply multi-line set-style config block with candidate lock and commit (workflow task)
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-send-config-input
     runtime:
@@ -196,8 +201,8 @@ services:
   - name: junos-netconf-send-command
     type: python-script
     description: Junos NETCONF — apply an array of set-style config commands with candidate lock and commit (workflow task)
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-send-command-input
     runtime:
@@ -208,8 +213,8 @@ services:
   - name: junos-netconf-reboot
     type: python-script
     description: Junos NETCONF — schedule reboot via <request-reboot/> RPC
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-reboot-input
     runtime:
@@ -220,8 +225,8 @@ services:
   - name: junos-netconf-set-config
     type: python-script
     description: Junos NETCONF — Config Manager remediation via IM iag5-service action (broker entry point)
-    repository: shared-lab-iag-assets
-    working-directory: device-drivers/junos
+    repository: itential-junos-driver
+    working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
     decorator: junos-netconf-set-config-input
     runtime:
