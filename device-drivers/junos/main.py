@@ -80,7 +80,7 @@ def run_command(conn, args) -> dict:
                 try:
                     rpc_reply = m.command(command=cmd, format="text")
                     output_nodes = rpc_reply.xpath(".//output")
-                    output = output_nodes[0].text if output_nodes else rpc_reply.xml
+                    output = output_nodes[0].text if output_nodes else (getattr(rpc_reply, "xml", None) or str(rpc_reply))
                     results.append({"command": cmd, "output": output or "", "success": True})
                 except RPCError as e:
                     error_msg = getattr(e, "message", None) or str(e)
