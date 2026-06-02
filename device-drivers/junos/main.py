@@ -91,7 +91,15 @@ def run_command(conn, args) -> dict:
                     rpc_reply = m.command(command=cmd, format="text")
                     output_nodes = rpc_reply.xpath(".//output")
                     output = output_nodes[0].text if output_nodes else (getattr(rpc_reply, "xml", None) or str(rpc_reply))
-                    results.append({"command": cmd, "output": output or "", "success": True})
+                    output = output or ""
+                    # Junos embeds CLI errors in text output as "protocol: ...\nerror: message"
+                    # Strip the preamble and return just the error message line
+                    if "\nerror: " in output:
+                        for line in output.splitlines():
+                            if line.startswith("error: "):
+                                output = line[7:]
+                                break
+                    results.append({"command": cmd, "output": output, "success": True})
                 except RPCError as e:
                     error_msg = _rpc_error_message(e)
                     results.append({"command": cmd, "output": error_msg, "success": True})
