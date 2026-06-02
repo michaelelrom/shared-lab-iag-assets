@@ -157,6 +157,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     runtime:
       env:
         JUNOS_OP: is-alive
@@ -168,6 +169,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-run-command-input
     runtime:
       env:
@@ -180,6 +182,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-get-config-input
     runtime:
       env:
@@ -192,6 +195,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-send-config-input
     runtime:
       env:
@@ -204,6 +208,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-send-command-input
     runtime:
       env:
@@ -216,6 +221,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-reboot-input
     runtime:
       env:
@@ -228,6 +234,7 @@ services:
     repository: itential-junos-driver
     working-directory: Juniper/JUNOS/device-drivers/netconf-python
     filename: main.py
+    requirements_file: requirements.txt
     decorator: junos-netconf-set-config-input
     runtime:
       env:
