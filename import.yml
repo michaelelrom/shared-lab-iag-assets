@@ -13,7 +13,7 @@ repositories:
   - name: itential-junos-driver
     description: Official Itential Junos NETCONF driver
     url: https://github.com/itential/assets.git
-    reference: devel
+    reference: ea187c5a35160f8ec68bdafbcffed4d295e043e9
 
 decorators:
   - name: junos-netconf-run-command-input
