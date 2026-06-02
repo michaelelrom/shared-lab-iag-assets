@@ -35,6 +35,16 @@ from ncclient.operations.rpc import RPCError
 from ncclient.transport.errors import AuthenticationError, SSHError
 
 
+def _rpc_error_message(e):
+    msg = getattr(e, "message", None)
+    if msg:
+        return msg
+    for line in str(e).splitlines():
+        if line.startswith("error: "):
+            return line[7:]
+    return str(e)
+
+
 def _connect(conn):
     return manager.connect(
         host=conn["host"],
@@ -83,7 +93,7 @@ def run_command(conn, args) -> dict:
                     output = output_nodes[0].text if output_nodes else (getattr(rpc_reply, "xml", None) or str(rpc_reply))
                     results.append({"command": cmd, "output": output or "", "success": True})
                 except RPCError as e:
-                    error_msg = getattr(e, "message", None) or str(e)
+                    error_msg = _rpc_error_message(e)
                     results.append({"command": cmd, "output": error_msg, "success": True})
         return {"success": all(r["success"] for r in results), "host": conn["host"], "results": results}
     except Exception as e:
