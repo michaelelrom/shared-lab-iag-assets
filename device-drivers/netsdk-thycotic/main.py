@@ -181,6 +181,14 @@ class _Conn:
         self._platform = platform
 
     def is_alive(self) -> bool:
+        if self._backend == "scrapli":
+            # scrapli's is_alive() only checks transport subprocess state and can
+            # return False on a live session. get_prompt() does a real device round-trip.
+            try:
+                self._raw.get_prompt()
+                return True
+            except Exception:
+                return False
         return bool(self._raw.is_alive())
 
     def send_command(self, cmd: str) -> str:
