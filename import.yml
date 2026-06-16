@@ -125,6 +125,68 @@ decorators:
       required: [commands]
       additionalProperties: false
 
+  - name: netsdk-thycotic-run-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: netsdk-thycotic-run-command inputs
+      type: object
+      properties:
+        command:
+          description: Operational CLI command to execute (e.g. "show version")
+          type: string
+      required: [command]
+      additionalProperties: false
+
+  - name: netsdk-thycotic-get-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: netsdk-thycotic-get-config inputs
+      type: object
+      properties:
+        source:
+          description: Configuration source (running or startup)
+          type: string
+          enum: [running, startup]
+      additionalProperties: false
+
+  - name: netsdk-thycotic-send-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: netsdk-thycotic-send-command inputs
+      type: object
+      properties:
+        commands:
+          description: Array of CLI config commands to apply (e.g. "interface GigabitEthernet1")
+          type: array
+          items:
+            type: string
+      required: [commands]
+      additionalProperties: false
+
+  - name: netsdk-thycotic-send-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: netsdk-thycotic-send-config inputs
+      type: object
+      properties:
+        config:
+          description: Multi-line CLI config block to apply and save
+          type: string
+      required: [config]
+      additionalProperties: false
+
+  - name: netsdk-thycotic-set-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: netsdk-thycotic-set-config inputs
+      type: object
+      properties:
+        config:
+          description: JSON-encoded Config Manager changes array [{parents, old, new}]
+          type: string
+      required: [config]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -233,4 +295,74 @@ services:
         JUNOS_OP: set-config
     tags: [driver, junos, netconf, broker]
 
+  - name: netsdk-thycotic-is-alive
+    type: python-script
+    description: netsdk-thycotic — verify device reachability via netmiko; password resolved from Thycotic
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    runtime:
+      env:
+        NETSDK_OP: is-alive
+    tags: [driver, netsdk, thycotic]
+
+  - name: netsdk-thycotic-run-command
+    type: python-script
+    description: netsdk-thycotic — execute operational CLI command via netmiko; password resolved from Thycotic
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    decorator: netsdk-thycotic-run-command-input
+    runtime:
+      env:
+        NETSDK_OP: run-command
+    tags: [driver, netsdk, thycotic]
+
+  - name: netsdk-thycotic-get-config
+    type: python-script
+    description: netsdk-thycotic — retrieve running configuration via netmiko; password resolved from Thycotic
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    decorator: netsdk-thycotic-get-config-input
+    runtime:
+      env:
+        NETSDK_OP: get-config
+    tags: [driver, netsdk, thycotic]
+
+  - name: netsdk-thycotic-send-command
+    type: python-script
+    description: netsdk-thycotic — apply array of CLI config commands via netmiko (workflow task)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    decorator: netsdk-thycotic-send-command-input
+    runtime:
+      env:
+        NETSDK_OP: send-command
+    tags: [driver, netsdk, thycotic]
+
+  - name: netsdk-thycotic-send-config
+    type: python-script
+    description: netsdk-thycotic — apply multi-line CLI config block via netmiko (workflow task)
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    decorator: netsdk-thycotic-send-config-input
+    runtime:
+      env:
+        NETSDK_OP: send-config
+    tags: [driver, netsdk, thycotic]
+
+  - name: netsdk-thycotic-set-config
+    type: python-script
+    description: netsdk-thycotic — Config Manager remediation broker entry point; password resolved from Thycotic
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/netsdk-thycotic
+    filename: main.py
+    decorator: netsdk-thycotic-set-config-input
+    runtime:
+      env:
+        NETSDK_OP: set-config
+    tags: [driver, netsdk, thycotic, broker]
 
