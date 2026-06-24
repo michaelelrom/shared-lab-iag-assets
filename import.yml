@@ -187,6 +187,49 @@ decorators:
       required: [config]
       additionalProperties: false
 
+  - name: f5-rest-run-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: f5-rest-run-command inputs
+      type: object
+      properties:
+        command:
+          description: Bash or TMSH command to execute (e.g. "tmsh show sys version")
+          type: string
+      required: [command]
+      additionalProperties: false
+
+  - name: f5-rest-send-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: f5-rest-send-command inputs
+      type: object
+      properties:
+        verb:
+          description: HTTP method
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        route:
+          description: iControl REST route (e.g. /mgmt/tm/ltm/virtual)
+          type: string
+        body:
+          description: JSON request body (optional)
+          type: string
+      required: [verb, route]
+      additionalProperties: false
+
+  - name: f5-rest-set-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: f5-rest-set-config inputs
+      type: object
+      properties:
+        config:
+          description: JSON-encoded Config Manager changes array [{parents, old, new}]
+          type: string
+      required: [config]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -365,4 +408,62 @@ services:
       env:
         NETSDK_OP: set-config
     tags: [driver, netsdk, thycotic, broker]
+
+  - name: f5-rest-is-alive
+    type: python-script
+    description: F5 BIG-IP iControl REST — verify reachability via GET /mgmt/tm/sys/version
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/f5-rest
+    filename: main.py
+    runtime:
+      env:
+        F5_REST_OP: is-alive
+    tags: [driver, f5, rest]
+
+  - name: f5-rest-run-command
+    type: python-script
+    description: F5 BIG-IP iControl REST — execute bash or TMSH command via /mgmt/tm/util/bash
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/f5-rest
+    filename: main.py
+    decorator: f5-rest-run-command-input
+    runtime:
+      env:
+        F5_REST_OP: run-command
+    tags: [driver, f5, rest]
+
+  - name: f5-rest-get-config
+    type: python-script
+    description: F5 BIG-IP iControl REST — retrieve configuration via configurable TMSH command
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/f5-rest
+    filename: main.py
+    runtime:
+      env:
+        F5_REST_OP: get-config
+    tags: [driver, f5, rest]
+
+  - name: f5-rest-send-command
+    type: python-script
+    description: F5 BIG-IP iControl REST — generic passthrough; caller supplies verb, route, and body
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/f5-rest
+    filename: main.py
+    decorator: f5-rest-send-command-input
+    runtime:
+      env:
+        F5_REST_OP: send-command
+    tags: [driver, f5, rest]
+
+  - name: f5-rest-set-config
+    type: python-script
+    description: F5 BIG-IP iControl REST — Config Manager remediation broker entry point
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/f5-rest
+    filename: main.py
+    decorator: f5-rest-set-config-input
+    runtime:
+      env:
+        F5_REST_OP: set-config
+    tags: [driver, f5, rest, broker]
 
