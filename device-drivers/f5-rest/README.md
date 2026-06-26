@@ -13,7 +13,7 @@ Use the platform's built-in netsdk driver if you need SSH/TMSH access instead.
 | `f5-rest-is-alive` | `is-alive` | `GET /mgmt/tm/sys/version` — returns `true` or `false` |
 | `f5-rest-run-command` | `run-command` | Runs a bash or TMSH command via `/mgmt/tm/util/bash` |
 | `f5-rest-get-config` | `get-config` | Runs the configured TMSH command and returns text output |
-| `f5-rest-send-command` | — | Generic iControl REST passthrough — caller supplies verb, route, and body |
+| `f5-rest-rest-call` | — | Generic iControl REST passthrough — caller supplies verb, route, and body |
 | `f5-rest-set-config` | `set-config` | Config Manager remediation broker entry point |
 
 ## Authentication
@@ -98,9 +98,9 @@ never cached or reused across invocations.
 }
 ```
 
-## send-command — generic REST passthrough
+## rest-call — generic REST passthrough
 
-`f5-rest-send-command` is a workflow task (not a broker action) that lets workflows
+`f5-rest-rest-call` is a workflow task (not a broker action) that lets workflows
 call any iControl REST endpoint without a device-specific service per endpoint.
 The driver handles authentication; the workflow author supplies the rest.
 
@@ -154,8 +154,8 @@ F5_REST_OP=run-command python main.py \
   --host 192.0.2.100 --user admin --password changeme \
   --command "tmsh show sys version"
 
-# send-command (generic REST)
-F5_REST_OP=send-command python main.py \
+# rest-call (generic REST)
+F5_REST_OP=rest-call python main.py \
   --host 192.0.2.100 --user admin --password changeme \
   --verb GET --route /mgmt/tm/ltm/virtual
 ```

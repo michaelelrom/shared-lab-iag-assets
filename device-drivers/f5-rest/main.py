@@ -200,11 +200,11 @@ def set_config(conn: dict, args) -> dict:
 
 
 _DISPATCH = {
-    "is-alive":     is_alive,
-    "run-command":  run_command,
-    "get-config":   get_config,
-    "send-command": send_command,
-    "set-config":   set_config,
+    "is-alive":    is_alive,
+    "run-command": run_command,
+    "get-config":  get_config,
+    "rest-call":   send_command,
+    "set-config":  set_config,
 }
 
 
@@ -276,7 +276,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--op", default=os.environ.get("F5_REST_OP"),
                         choices=list(_DISPATCH),
-                        help="Operation to perform. Defaults to F5_REST_OP env var.")
+                        help="Operation to perform. Defaults to F5_REST_OP env var. "
+                             "Use 'rest-call' for generic iControl REST passthrough.")
     parser.add_argument("--host",     default=None)
     parser.add_argument("--port",     type=int, default=None)
     parser.add_argument("--user",     default=None)
