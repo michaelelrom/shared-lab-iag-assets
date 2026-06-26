@@ -2,19 +2,26 @@
 """f5-rest — F5 BIG-IP iControl REST driver for IAG5.
 
 Implements the IAG5 device broker contracts via the F5 iControl REST API:
-is-alive, run-command, get-config, send-command, and set-config.
+is-alive, run-command, get-config, rest-call, and set-config.
 
-Authentication uses F5 token-based auth — a fresh token is obtained per
-invocation via POST /mgmt/shared/authn/login.
+Auth method is configured per-device via itential_driver_options.f5-rest.auth_method:
+
+  token  (default) POST /mgmt/shared/authn/login → X-F5-Auth-Token
+  oauth            OAuth2 client_credentials → Authorization: Bearer
+                   Requires env vars: F5_OAUTH_CLIENT_ID, F5_OAUTH_CLIENT_SECRET
+                   Optional:          F5_OAUTH_TOKEN_URL (defaults to /mgmt/shared/authn/oauth2/v1/token)
+  basic            Authorization: Basic base64(user:pass) on every request
+  bearer           Static pre-obtained Bearer token from env var F5_BEARER_TOKEN
 
 Per-device configuration in Inventory Manager attributes:
   itential_host      — F5 management IP or hostname
   itential_port      — HTTPS port (default: 443)
-  itential_user      — F5 username
+  itential_user      — F5 username (used by token and basic auth)
   itential_password  — F5 password (resolved by IAG5 — no vault logic in this driver)
 
   itential_driver_options.f5-rest:
-    login_provider     — F5 auth provider name (default: tmos)
+    auth_method        — token | oauth | basic | bearer  (default: token)
+    login_provider     — F5 auth provider for token auth (default: tmos)
     verify_ssl         — verify TLS certificate (default: true)
     timeout            — request timeout seconds (default: 30)
     get_config_command — bash command used for get-config
@@ -30,46 +37,98 @@ import json
 import os
 import sys
 
-import requests
-from requests.exceptions import HTTPError
+# Allow importing from the shared lib/ directory alongside this driver.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from lib.iag import (
+    read_stdin_inventory,
+    normalize_args,
+    print_result,
+    build_set_config_output,
+)
+from lib.rest import (
+    TokenAuth,
+    OAuth2ClientCredentials,
+    BasicAuth,
+    BearerAuth,
+    RestSession,
+)
 
 
 # ---------------------------------------------------------------------------
-# iControl REST helpers
+# F5-specific session factory
 # ---------------------------------------------------------------------------
 
-def _token(conn: dict) -> str:
-    r = requests.post(
-        f"https://{conn['host']}:{conn['port']}/mgmt/shared/authn/login",
-        json={
-            "username": conn["user"],
-            "password": conn["password"],
-            "loginProviderName": conn["login_provider"],
-        },
-        verify=conn["verify_ssl"],
-        timeout=conn["timeout"],
-    )
-    r.raise_for_status()
-    return r.json()["token"]["token"]
+def _make_session(conn: dict) -> RestSession:
+    """Build a RestSession with the auth strategy configured for this device."""
+    method   = conn["auth_method"]
+    base     = f"https://{conn['host']}:{conn['port']}"
+    verify   = conn["verify_ssl"]
+    timeout  = conn["timeout"]
+
+    if method == "token":
+        auth = TokenAuth(
+            token_url=f"{base}/mgmt/shared/authn/login",
+            payload={
+                "username":          conn["user"],
+                "password":          conn["password"],
+                "loginProviderName": conn["login_provider"],
+            },
+            token_path="token.token",
+            header_name="X-F5-Auth-Token",
+            verify_ssl=verify,
+            timeout=timeout,
+        )
+
+    elif method == "oauth":
+        token_url = (
+            conn.get("oauth_token_url")
+            or os.environ.get("F5_OAUTH_TOKEN_URL")
+            or f"{base}/mgmt/shared/authn/oauth2/v1/token"
+        )
+        client_id     = conn.get("oauth_client_id")     or os.environ.get("F5_OAUTH_CLIENT_ID")
+        client_secret = conn.get("oauth_client_secret") or os.environ.get("F5_OAUTH_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise SystemExit(
+                "auth_method=oauth requires F5_OAUTH_CLIENT_ID and "
+                "F5_OAUTH_CLIENT_SECRET environment variables"
+            )
+        auth = OAuth2ClientCredentials(
+            token_url=token_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            verify_ssl=verify,
+            timeout=timeout,
+        )
+
+    elif method == "basic":
+        auth = BasicAuth(conn["user"], conn["password"])
+
+    elif method == "bearer":
+        token = conn.get("bearer_token") or os.environ.get("F5_BEARER_TOKEN")
+        if not token:
+            raise SystemExit("auth_method=bearer requires F5_BEARER_TOKEN environment variable")
+        auth = BearerAuth(token)
+
+    else:
+        raise SystemExit(
+            f"unsupported auth_method {method!r}; "
+            "choose from: token, oauth, basic, bearer"
+        )
+
+    return RestSession(auth, verify_ssl=verify, timeout=timeout)
 
 
-def _headers(token: str) -> dict:
-    return {"X-F5-Auth-Token": token, "Content-Type": "application/json"}
+def _base(conn: dict) -> str:
+    return f"https://{conn['host']}:{conn['port']}"
 
 
-def _url(conn: dict, route: str) -> str:
-    return f"https://{conn['host']}:{conn['port']}/{route.lstrip('/')}"
-
-
-def _bash(conn: dict, token: str, cmd: str) -> str:
-    r = requests.post(
-        _url(conn, "/mgmt/tm/util/bash"),
-        headers=_headers(token),
+def _bash(session: RestSession, base_url: str, cmd: str) -> str:
+    """Run a bash command via /mgmt/tm/util/bash and return text output."""
+    r = session.post(
+        f"{base_url}/mgmt/tm/util/bash",
         json={"command": "run", "utilCmdArgs": f"-c '{cmd}'"},
-        verify=conn["verify_ssl"],
-        timeout=conn["timeout"],
     )
-    r.raise_for_status()
     return r.json().get("commandResult", "")
 
 
@@ -79,13 +138,8 @@ def _bash(conn: dict, token: str, cmd: str) -> str:
 
 def is_alive(conn: dict, args) -> dict:
     try:
-        token = _token(conn)
-        r = requests.get(
-            _url(conn, "/mgmt/tm/sys/version"),
-            headers=_headers(token),
-            verify=conn["verify_ssl"],
-            timeout=conn["timeout"],
-        )
+        session = _make_session(conn)
+        r = session.get(_base(conn) + "/mgmt/tm/sys/version", raise_on_error=False)
         return {"success": True, "alive": r.status_code == 200, "host": conn["host"]}
     except Exception as e:
         return {"success": False, "alive": False, "host": conn["host"],
@@ -98,13 +152,15 @@ def run_command(conn: dict, args) -> dict:
                 "error": "command is required for action=run-command"}
     results = []
     try:
-        token = _token(conn)
+        session = _make_session(conn)
+        base_url = _base(conn)
         for cmd in args.command:
             try:
-                output = _bash(conn, token, cmd)
+                output = _bash(session, base_url, cmd)
                 results.append({"command": cmd, "output": output, "success": True})
             except Exception as e:
-                results.append({"command": cmd, "output": "", "success": False, "error": str(e)})
+                results.append({"command": cmd, "output": "", "success": False,
+                                 "error": str(e)})
         return {"success": all(r["success"] for r in results),
                 "host": conn["host"], "results": results}
     except Exception as e:
@@ -115,8 +171,8 @@ def run_command(conn: dict, args) -> dict:
 def get_config(conn: dict, args) -> dict:
     cmd = conn.get("get_config_command") or "tmsh list all-properties"
     try:
-        token = _token(conn)
-        output = _bash(conn, token, cmd)
+        session  = _make_session(conn)
+        output   = _bash(session, _base(conn), cmd)
         return {"success": True, "host": conn["host"],
                 "config_format": "text", "config": output}
     except Exception as e:
@@ -124,30 +180,22 @@ def get_config(conn: dict, args) -> dict:
                 "error": str(e), "error_type": type(e).__name__}
 
 
-def send_command(conn: dict, args) -> dict:
+def rest_call(conn: dict, args) -> dict:
     """Generic iControl REST passthrough — caller supplies verb, route, body."""
     if not args.verb or not args.route:
         return {"success": False, "host": conn["host"],
-                "error": "verb and route are required for action=send-command"}
+                "error": "verb and route are required for action=rest-call"}
     try:
-        token = _token(conn)
-        body = None
+        session = _make_session(conn)
+        url     = _base(conn) + "/" + args.route.lstrip("/")
+        body    = None
         if args.body:
             try:
                 body = json.loads(args.body) if isinstance(args.body, str) else args.body
             except (json.JSONDecodeError, TypeError):
                 body = args.body
 
-        r = requests.request(
-            args.verb.upper(),
-            _url(conn, args.route),
-            headers=_headers(token),
-            json=body,
-            verify=conn["verify_ssl"],
-            timeout=conn["timeout"],
-        )
-        r.raise_for_status()
-
+        r = session.request(args.verb.upper(), url, json=body)
         try:
             response_data = r.json()
         except Exception:
@@ -156,44 +204,38 @@ def send_command(conn: dict, args) -> dict:
         return {"success": True, "host": conn["host"],
                 "status_code": r.status_code, "response": response_data}
 
-    except HTTPError as e:
-        try:
-            error_body = e.response.json()
-        except Exception:
-            error_body = e.response.text if e.response else str(e)
-        return {"success": False, "host": conn["host"],
-                "status_code": e.response.status_code if e.response else None,
-                "error": str(e), "error_body": error_body}
     except Exception as e:
-        return {"success": False, "host": conn["host"],
-                "error": str(e), "error_type": type(e).__name__}
+        resp = getattr(getattr(e, "response", None), None, None)
+        result = {"success": False, "host": conn["host"],
+                  "error": str(e), "error_type": type(e).__name__}
+        if hasattr(e, "response") and e.response is not None:
+            result["status_code"] = e.response.status_code
+            try:
+                result["error_body"] = e.response.json()
+            except Exception:
+                result["error_body"] = e.response.text
+        return result
 
 
 def set_config(conn: dict, args) -> dict:
-    """Config Manager remediation — execute changes array as bash/TMSH commands."""
+    """Config Manager remediation — run CM changes as bash/TMSH commands."""
     if not args.command:
-        return {"success": False, "host": conn["host"], "error": "no config changes to apply"}
+        return {"success": False, "host": conn["host"],
+                "error": "no config changes to apply"}
     try:
-        token = _token(conn)
+        session  = _make_session(conn)
+        base_url = _base(conn)
         for cmd in args.command:
-            _bash(conn, token, cmd)
+            _bash(session, base_url, cmd)
         if conn.get("save_config"):
             try:
-                _bash(conn, token, "tmsh save sys config")
+                _bash(session, base_url, "tmsh save sys config")
             except Exception:
                 pass
         changes_list = getattr(args, "_changes_list", None)
-        if changes_list:
-            output = [
-                {"result": True, "parents": c.get("parents", []),
-                 "old": c.get("old", ""), "new": c.get("new", "")}
-                for c in changes_list
-            ]
-        else:
-            output = [{"result": True, "parents": [], "old": "", "new": cmd}
-                      for cmd in args.command]
+        output = build_set_config_output(args.command, changes_list)
         return {"success": True, "host": conn["host"],
-                "_changes_list": changes_list, "results": output}
+                "_output": output, "_changes_list": changes_list}
     except Exception as e:
         return {"success": False, "host": conn["host"],
                 "error": str(e), "error_type": type(e).__name__}
@@ -203,33 +245,17 @@ _DISPATCH = {
     "is-alive":    is_alive,
     "run-command": run_command,
     "get-config":  get_config,
-    "rest-call":   send_command,
+    "rest-call":   rest_call,
     "set-config":  set_config,
 }
 
 
 # ---------------------------------------------------------------------------
-# Inventory / stdin parsing
+# Connection resolution
 # ---------------------------------------------------------------------------
 
-def _read_stdin_inventory():
-    if sys.stdin.isatty():
-        return None
-    raw = sys.stdin.read()
-    if not raw or not raw.strip():
-        return None
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict) or "inventory_nodes" not in data:
-        return None
-    nodes = data.get("inventory_nodes") or []
-    return nodes[0] if nodes else None
-
-
 def _resolve_connection(args, node) -> dict:
-    attrs = ((node or {}).get("attributes") or {})
+    attrs       = ((node or {}).get("attributes") or {})
     driver_opts = dict((attrs.get("itential_driver_options") or {}).get("f5-rest") or {})
 
     def pick(cli_val, attr_key, default=None):
@@ -243,26 +269,40 @@ def _resolve_connection(args, node) -> dict:
     user     = pick(args.user,     "itential_user")
     password = pick(args.password, "itential_password")
 
+    # Pop driver-managed keys before passing the rest to auth/session
+    auth_method    = driver_opts.pop("auth_method",        None) or "token"
+    login_provider = driver_opts.pop("login_provider",     None) or "tmos"
+    verify_ssl     = driver_opts.pop("verify_ssl",         True)
+    timeout        = int(driver_opts.pop("timeout",        30) or 30)
     get_config_cmd = driver_opts.pop("get_config_command", None) or "tmsh list all-properties"
-    save           = str(driver_opts.pop("save_config", "true")).lower() not in ("false", "0", "no")
-    login_provider = driver_opts.pop("login_provider", None) or "tmos"
-    verify_ssl     = driver_opts.pop("verify_ssl", True)
+    save           = str(driver_opts.pop("save_config",    "true")).lower() not in ("false", "0", "no")
+
+    # OAuth / bearer extras that may live in driver options
+    oauth_token_url    = driver_opts.pop("oauth_token_url",    None)
+    oauth_client_id    = driver_opts.pop("oauth_client_id",    None)
+    oauth_client_secret= driver_opts.pop("oauth_client_secret",None)
+    bearer_token       = driver_opts.pop("bearer_token",       None)
+
     if isinstance(verify_ssl, str):
         verify_ssl = verify_ssl.lower() not in ("false", "0", "no")
-    timeout = int(driver_opts.pop("timeout", 30) or 30)
 
     missing = [n for n, v in [("host", host), ("user", user), ("password", password)] if not v]
-    if missing:
+    if auth_method in ("basic", "token") and missing:
         raise SystemExit(
-            f"missing required connection field(s): {', '.join(missing)} "
-            f"(provide via --{missing[0]} or inventory attribute itential_{missing[0]})"
+            f"missing required field(s): {', '.join(missing)} "
+            f"(set itential_{missing[0]} on the inventory node)"
         )
 
     return {
         "host": host, "port": port, "user": user, "password": password,
-        "login_provider": login_provider, "verify_ssl": verify_ssl,
-        "timeout": timeout, "get_config_command": get_config_cmd,
-        "save_config": save, "device_name": (node or {}).get("name") or host,
+        "auth_method": auth_method, "login_provider": login_provider,
+        "verify_ssl": verify_ssl, "timeout": timeout,
+        "get_config_command": get_config_cmd, "save_config": save,
+        "oauth_token_url": oauth_token_url,
+        "oauth_client_id": oauth_client_id,
+        "oauth_client_secret": oauth_client_secret,
+        "bearer_token": bearer_token,
+        "device_name": (node or {}).get("name") or host,
     }
 
 
@@ -276,154 +316,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--op", default=os.environ.get("F5_REST_OP"),
                         choices=list(_DISPATCH),
-                        help="Operation to perform. Defaults to F5_REST_OP env var. "
-                             "Use 'rest-call' for generic iControl REST passthrough.")
+                        help="Operation. Defaults to F5_REST_OP env var.")
     parser.add_argument("--host",     default=None)
     parser.add_argument("--port",     type=int, default=None)
     parser.add_argument("--user",     default=None)
     parser.add_argument("--password", default=None)
     parser.add_argument("--timeout",  type=int, default=None)
 
-    # run-command
+    # run-command / set-config
     parser.add_argument("--command", action="append", default=None,
-                        help="Bash/TMSH command to run (repeatable)")
+                        help="Bash or TMSH command (repeatable)")
     parser.add_argument("--commands", default=None,
                         help="JSON array of commands")
+    parser.add_argument("--config",         default=None)
+    parser.add_argument("--config_content", "--config-content",
+                        dest="config_content", default=None)
+    parser.add_argument("--changes", default=None)
+    parser.add_argument("--options", default=None)
 
-    # send-command (generic REST passthrough)
+    # rest-call
     parser.add_argument("--verb",  default=None,
-                        help="HTTP verb for send-command (GET, POST, PUT, PATCH, DELETE)")
+                        help="HTTP verb for rest-call (GET POST PUT PATCH DELETE)")
     parser.add_argument("--route", default=None,
                         help="iControl REST route (e.g. /mgmt/tm/ltm/virtual)")
     parser.add_argument("--body",  default=None,
-                        help="JSON request body for send-command")
-
-    # set-config / CM remediation
-    parser.add_argument("--config",        default=None)
-    parser.add_argument("--config_content","--config-content", dest="config_content", default=None)
-    parser.add_argument("--changes",       default=None)
-    parser.add_argument("--options",       default=None)
+                        help="JSON request body for rest-call")
 
     return parser
-
-
-def _extract_changes(changes_list: list) -> list:
-    lines = []
-    for c in changes_list:
-        new_val = str(c.get("new", "") or "").strip()
-        old_val = str(c.get("old", "") or "").strip()
-        if new_val:
-            lines.append(new_val)
-        elif old_val:
-            lines.append(f"no {old_val}" if not old_val.startswith("no ") else old_val)
-    return lines
-
-
-def _normalize_args(args):
-    for attr in ("host", "user", "password", "config", "config_content",
-                 "commands", "options", "verb", "route", "body"):
-        if getattr(args, attr, None) == "":
-            setattr(args, attr, None)
-
-    if not hasattr(args, "_changes_list"):
-        args._changes_list = None
-
-    if args.commands and not args.command:
-        try:
-            cmds = json.loads(args.commands) if isinstance(args.commands, str) else args.commands
-            args.command = [str(c) for c in (cmds if isinstance(cmds, list) else [cmds]) if str(c).strip()]
-        except (json.JSONDecodeError, TypeError):
-            args.command = [args.commands] if args.commands and args.commands.strip() else None
-    args.commands = None
-
-    for src_attr in ("config", "config_content"):
-        src = getattr(args, src_attr, None)
-        if src and not args.command:
-            src = src.strip()
-            if src.startswith("["):
-                try:
-                    changes_list = json.loads(src)
-                    lines = _extract_changes(changes_list)
-                    if lines:
-                        args.command = lines
-                        args._changes_list = changes_list
-                except (json.JSONDecodeError, TypeError):
-                    args.command = [src]
-            else:
-                args.command = [line.strip() for line in src.splitlines() if line.strip()]
-        setattr(args, src_attr, None)
-
-    if args.changes and not args.command:
-        try:
-            changes_list = json.loads(args.changes) if isinstance(args.changes, str) else args.changes
-            lines = _extract_changes(changes_list)
-            if lines:
-                args.command = lines
-                args._changes_list = changes_list
-        except (json.JSONDecodeError, TypeError):
-            pass
-    args.changes = None
-
-    if args.command:
-        split = []
-        for raw in args.command:
-            if raw is None:
-                continue
-            for line in raw.splitlines():
-                line = line.strip()
-                if line:
-                    split.append(line)
-        args.command = split or None
-
-
-# ---------------------------------------------------------------------------
-# Output formatting
-# ---------------------------------------------------------------------------
-
-def _format_for_humans(result: dict, op: str) -> str:
-    if op == "is-alive":
-        return "true" if result.get("alive") else "false"
-
-    if op == "run-command":
-        results = result.get("results") or []
-        if not results:
-            return f"ERROR: {result.get('error', 'connection failed')}"
-        if len(results) == 1:
-            r = results[0]
-            text = r.get("output", "")
-            if not r.get("success"):
-                text = f"ERROR: {r.get('error', 'unknown error')}\n{text}".rstrip()
-            return text
-        parts = []
-        for r in results:
-            parts.append(f"=== {r['command']} ===")
-            if not r.get("success"):
-                parts.append(f"ERROR: {r.get('error', 'unknown error')}")
-            if r.get("output"):
-                parts.append(r["output"])
-        return "\n".join(parts)
-
-    if op == "get-config":
-        if not result.get("success"):
-            return f"ERROR: {result.get('error', 'config retrieval failed')}"
-        return result.get("config", "")
-
-    if op == "set-config":
-        if result.get("success"):
-            changes_list = result.get("_changes_list")
-            if changes_list:
-                output = [
-                    {"result": True, "parents": c.get("parents", []),
-                     "old": c.get("old", ""), "new": c.get("new", "")}
-                    for c in changes_list
-                ]
-            else:
-                output = result.get("results", [])
-            return json.dumps(output)
-        print(result.get("error", "Configuration failed"), file=sys.stderr)
-        return "[]"
-
-    return json.dumps(result, indent=2, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -434,15 +353,11 @@ def main() -> int:
     args = build_parser().parse_args()
     if not args.op:
         raise SystemExit("--op flag or F5_REST_OP env var must be set")
-    _normalize_args(args)
-    node = _read_stdin_inventory()
+    normalize_args(args)
+    node = read_stdin_inventory()
     conn = _resolve_connection(args, node)
     result = _DISPATCH[args.op](conn, args)
-    formatted = _format_for_humans(result, args.op)
-    print(formatted, end="" if args.op == "is-alive" else "\n")
-    if not result.get("success"):
-        print(formatted, file=sys.stderr)
-    return 0 if result.get("success") else 1
+    return print_result(result, args.op)
 
 
 if __name__ == "__main__":
