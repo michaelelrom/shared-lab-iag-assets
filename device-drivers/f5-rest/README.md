@@ -13,7 +13,7 @@ Use the platform's built-in netsdk driver if you need SSH/TMSH access instead.
 | `f5-rest-is-alive` | `is-alive` | `GET /mgmt/tm/sys/version` — returns `true` or `false` |
 | `f5-rest-run-command` | `run-command` | Runs a bash or TMSH command via `/mgmt/tm/util/bash` |
 | `f5-rest-get-config` | `get-config` | Runs the configured TMSH command and returns text output |
-| `f5-rest-rest-call` | — | Generic iControl REST passthrough — caller supplies verb, route, and body |
+| `f5-rest-call` | — | Generic iControl REST passthrough — caller supplies verb, route, and body |
 | `f5-rest-set-config` | `set-config` | Config Manager remediation broker entry point |
 
 ## Authentication
@@ -100,7 +100,7 @@ never cached or reused across invocations.
 
 ## rest-call — generic REST passthrough
 
-`f5-rest-rest-call` is a workflow task (not a broker action) that lets workflows
+`f5-rest-call` is a workflow task (not a broker action) that lets workflows
 call any iControl REST endpoint without a device-specific service per endpoint.
 The driver handles authentication; the workflow author supplies the rest.
 

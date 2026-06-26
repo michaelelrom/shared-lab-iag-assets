@@ -199,10 +199,10 @@ decorators:
       required: [command]
       additionalProperties: false
 
-  - name: f5-rest-rest-call-input
+  - name: f5-rest-call-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
-      title: f5-rest-rest-call inputs
+      title: f5-rest-call inputs
       type: object
       properties:
         verb:
@@ -443,13 +443,13 @@ services:
         F5_REST_OP: get-config
     tags: [driver, f5, rest]
 
-  - name: f5-rest-rest-call
+  - name: f5-rest-call
     type: python-script
     description: F5 BIG-IP iControl REST — generic passthrough; caller supplies verb, route, and body
     repository: shared-lab-iag-assets
     working-directory: device-drivers/f5-rest
     filename: main.py
-    decorator: f5-rest-rest-call-input
+    decorator: f5-rest-call-input
     runtime:
       env:
         F5_REST_OP: rest-call
