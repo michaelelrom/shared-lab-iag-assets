@@ -1,9 +1,9 @@
-"""Common IAG5 utilities for python-script device drivers.
+"""IAG5 utilities for the f5-rest driver.
 
-Drop this lib/ directory next to any driver that needs it and import:
+Private to device-drivers/f5-rest/ — not a shared library. Imported via:
 
     import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, os.path.dirname(__file__))
     from lib.iag import read_stdin_inventory, normalize_args, print_result
 """
 
