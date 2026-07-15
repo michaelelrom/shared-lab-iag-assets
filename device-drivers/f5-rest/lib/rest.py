@@ -1,9 +1,9 @@
-"""Pluggable auth and HTTP session for REST-based device drivers.
+"""Pluggable auth and HTTP session for the f5-rest driver.
 
-Usage in a driver:
+Private to device-drivers/f5-rest/ — not a shared library. Imported via:
 
     import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    sys.path.insert(0, os.path.dirname(__file__))
     from lib.rest import TokenAuth, OAuth2ClientCredentials, BasicAuth, BearerAuth, RestSession
 
 Auth classes

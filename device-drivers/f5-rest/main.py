@@ -37,8 +37,8 @@ import json
 import os
 import sys
 
-# Allow importing from the shared lib/ directory alongside this driver.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# lib/ is private to this driver — not shared with other device-drivers/*.
+sys.path.insert(0, os.path.dirname(__file__))
 
 from lib.iag import (
     read_stdin_inventory,
