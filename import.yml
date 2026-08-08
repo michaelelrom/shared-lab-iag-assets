@@ -230,6 +230,25 @@ decorators:
       required: [config]
       additionalProperties: false
 
+  - name: fortigate-rest-call-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: fortigate-rest-call inputs
+      type: object
+      properties:
+        verb:
+          description: HTTP method
+          type: string
+          enum: [GET, POST, PUT, DELETE]
+        route:
+          description: FortiOS REST route (e.g. /api/v2/cmdb/firewall/policy)
+          type: string
+        body:
+          description: JSON request body (optional)
+          type: string
+      required: [verb, route]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -466,4 +485,38 @@ services:
       env:
         F5_REST_OP: set-config
     tags: [driver, f5, rest, broker]
+
+  - name: fortigate-rest-is-alive
+    type: python-script
+    description: Fortinet FortiGate REST API — verify reachability via GET /api/v2/monitor/system/status
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/fortigate-rest
+    filename: main.py
+    runtime:
+      env:
+        FORTIGATE_REST_OP: is-alive
+    tags: [driver, fortigate, rest]
+
+  - name: fortigate-rest-get-config
+    type: python-script
+    description: Fortinet FortiGate REST API — retrieve full configuration via GET /api/v2/monitor/system/config/backup
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/fortigate-rest
+    filename: main.py
+    runtime:
+      env:
+        FORTIGATE_REST_OP: get-config
+    tags: [driver, fortigate, rest]
+
+  - name: fortigate-rest-call
+    type: python-script
+    description: Fortinet FortiGate REST API — generic passthrough; caller supplies verb, route, and body
+    repository: shared-lab-iag-assets
+    working-directory: device-drivers/fortigate-rest
+    filename: main.py
+    decorator: fortigate-rest-call-input
+    runtime:
+      env:
+        FORTIGATE_REST_OP: rest-call
+    tags: [driver, fortigate, rest]
 
