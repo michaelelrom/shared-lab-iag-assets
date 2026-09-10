@@ -230,6 +230,26 @@ decorators:
       required: [config]
       additionalProperties: false
 
+  - name: ping-check-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: ping-check inputs
+      type: object
+      properties:
+        target_ip:
+          description: IP address to ping from the gateway host
+          type: string
+        count:
+          description: Number of ping packets to send
+          type: string
+          default: "4"
+        timeout:
+          description: Per-packet timeout in seconds
+          type: string
+          default: "2"
+      required: [target_ip]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -466,4 +486,13 @@ services:
       env:
         F5_REST_OP: set-config
     tags: [driver, f5, rest, broker]
+
+  - name: ping-check
+    type: python-script
+    description: Network-level reachability check (OS ping from the gateway host) — validates a device change is reachable over the network path, independent of the device's own CLI output
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/ping-check
+    filename: main.py
+    decorator: ping-check-input
+    tags: [validation, network, ping]
 
