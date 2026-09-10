@@ -1,6 +1,6 @@
 # IAG5 auto-deploy
 
-On every push to `main` (i.e. PR merge), GitHub Actions assumes an AWS role via OIDC and runs `/opt/gateway/deploy.sh` on the shared-lab IAG5 box via **SSM** — no inbound port required. iagctl client config, certs, and api.key all live on the host.
+On every push to `main` (i.e. PR merge), GitHub Actions calls the Itential Platform's `GatewayManager` API directly — Platform pulls `import.yml` straight from this repo over its existing connection to the gateway. No AWS, no SSM, no inbound port, nothing running on the gateway host itself.
 
 ## Architecture
 
@@ -9,53 +9,42 @@ git push main
    │
    ▼
 GitHub Actions runner (ubuntu-latest)
-   │  OIDC → sts:AssumeRoleWithWebIdentity
+   │  POST /oauth/token (client_credentials)
    ▼
-gha-deploy-iag5 role  (ssm:SendCommand on i-0dcf9db60fabecc0d only)
-   │  aws ssm send-command AWS-RunShellScript
+Itential Platform
+   │  POST /gateway_manager/v1/gateways/{clusterId}/configuration/import
+   │    { options: { source: "git", git: { url, file: "import.yml", reference: <sha> }, ... } }
+   │  Platform clones the repo itself and pushes the parsed config to the
+   │  gateway over its existing mTLS/WebSocket connection.
    ▼
-amazon-ssm-agent on IAG5 EC2 (Rocky 9)  — runs as root
-   │
-   ▼
-sudo -u itential /opt/gateway/deploy.sh <repo> <sha> <import.yml URL>
-   │
-   ▼
-iagctl (mode=client, gRPC to 127.0.0.1:50051)
-   – parses import.yml with python+jq
-   – idempotent upsert of each repository / service
+Gateway (cluster_id matches GATEWAY_CLUSTER_ID) — applies the config
 ```
 
-## Status (shared lab, account 623933009299, us-east-1)
+Three calls per deploy, same semantics as `iagctl db import`: `validate: true` (parse-only), `check: true` (dry-run diff, printed to the job summary), then `force: true` (apply).
 
-| Step                                          | Status |
-|-----------------------------------------------|--------|
-| GitHub OIDC provider + `gha-deploy-iag5` role | ✅ |
-| `iag5-ssm-profile` attached to `i-0dcf9db60fabecc0d` | ✅ |
-| `amazon-ssm-agent` Online (3.3.4364.0)        | ✅ |
-| `iagctl` + `iagctl-client` wrappers in PATH   | ✅ |
-| `/etc/gateway/api.key` (admin login complete) | ✅ |
-| `/opt/gateway/deploy.sh` installed + smoke-tested | ✅ |
-| `iag5-shared-lab` environment in GitHub       | needed |
-| Repo secrets + variables in GitHub            | needed |
-| Merge PR #1                                   | needed |
+**Known trade-off vs. the old pipeline:** this API does not delete orphaned resources — same as bare `iagctl db import` (adds/replaces only). The old `deploy.sh` had a custom loop that diffed live services against `import.yml` and deleted anything no longer listed. That's gone. Removing a service from `import.yml` now requires a manual `iagctl-client delete service <name>` on the box (see "Manual recovery" below) until/unless a bulk-delete endpoint is confirmed to exist.
+
+**Important — this pipeline is Platform-instance-specific.** The physical shared-lab gateway gets re-paired between different Itential Platform instances over time (see the pairing-toggle setup in `gateway.conf`). The `PLATFORM_URL`/`PLATFORM_CLIENT_ID`/`PLATFORM_CLIENT_SECRET`/`GATEWAY_CLUSTER_ID` values below must always point at whichever Platform instance the gateway is *currently* paired with — update them as part of any re-pairing, or this pipeline will silently deploy to the wrong (or an unreachable) Platform.
 
 ## GitHub repo secrets/variables
 
 ```bash
-gh secret   set AWS_DEPLOY_ROLE_ARN --body "arn:aws:iam::623933009299:role/gha-deploy-iag5"
-gh variable set AWS_REGION          --body "us-east-1"
-gh variable set IAG5_INSTANCE_ID    --body "i-0dcf9db60fabecc0d"
-gh variable set DEPLOY_SCRIPT       --body "/opt/gateway/deploy.sh"
+gh secret   set PLATFORM_CLIENT_ID     --body "<oauth client id>"
+gh secret   set PLATFORM_CLIENT_SECRET --body "<oauth client secret>"
+gh variable set PLATFORM_URL           --body "https://<your-instance>.itential.io"
+gh variable set GATEWAY_CLUSTER_ID     --body "<cluster id, e.g. cluster-itential>"
 ```
 
-| Kind     | Name                  | Value                                            |
-|----------|-----------------------|--------------------------------------------------|
-| Secret   | `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::623933009299:role/gha-deploy-iag5` |
-| Variable | `AWS_REGION`          | `us-east-1`                                      |
-| Variable | `IAG5_INSTANCE_ID`    | `i-0dcf9db60fabecc0d`                            |
-| Variable | `DEPLOY_SCRIPT`       | `/opt/gateway/deploy.sh`                         |
+| Kind     | Name                      | Notes                                              |
+|----------|---------------------------|-----------------------------------------------------|
+| Secret   | `PLATFORM_CLIENT_ID`      | OAuth client_credentials client ID                  |
+| Secret   | `PLATFORM_CLIENT_SECRET`  | OAuth client_credentials client secret              |
+| Variable | `PLATFORM_URL`            | Base URL of the currently-paired Platform instance  |
+| Variable | `GATEWAY_CLUSTER_ID`      | `cluster_id` from `GET /gateway_manager/v1/gateways/` on that instance |
 
 You also need an environment named `iag5-shared-lab` in repo Settings → Environments (or remove the `environment:` line in the workflow). The environment is useful for adding a required reviewer or wait-timer.
+
+The old AWS-based secrets/variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `IAG5_INSTANCE_ID`, `DEPLOY_SCRIPT`) are no longer used by the automated pipeline. They're left alone for now since the AWS OIDC role and SSM access are still useful for the manual recovery path below.
 
 ## Branch protection (recommended)
 

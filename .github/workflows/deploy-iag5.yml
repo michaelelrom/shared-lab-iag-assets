@@ -10,7 +10,6 @@ on:
         required: false
 
 permissions:
-  id-token: write   # OIDC token for AWS
   contents: read
 
 concurrency:
@@ -23,70 +22,64 @@ jobs:
     environment: iag5-shared-lab
 
     env:
-      AWS_REGION:       ${{ vars.AWS_REGION }}
-      IAG5_INSTANCE_ID: ${{ vars.IAG5_INSTANCE_ID }}
-      DEPLOY_SCRIPT:    ${{ vars.DEPLOY_SCRIPT }}   # e.g. /opt/gateway/deploy.sh
-      REPO:             ${{ github.repository }}
-      SHA:              ${{ github.sha }}
+      PLATFORM_URL: ${{ vars.PLATFORM_URL }}
+      CLUSTER_ID:   ${{ vars.GATEWAY_CLUSTER_ID }}
+      REPO_URL:     https://github.com/${{ github.repository }}.git
+      SHA:          ${{ github.event.inputs.ref || github.sha }}
 
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Invoke deploy.sh on IAG5 via SSM
-        id: ssm
+      - name: Get Platform access token
+        id: auth
         run: |
           set -euo pipefail
+          TOKEN=$(curl -fsS -X POST "${PLATFORM_URL}/oauth/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.PLATFORM_CLIENT_ID }}&client_secret=${{ secrets.PLATFORM_CLIENT_SECRET }}&grant_type=client_credentials" \
+            | jq -r '.access_token')
+          if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
+            echo "Failed to obtain access token" >&2
+            exit 1
+          fi
+          echo "::add-mask::${TOKEN}"
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
 
-          # The script on the box receives: repo, sha, and the raw URL of the
-          # commit's import.yml. It is responsible for fetching, applying, and
-          # exiting non-zero on failure.
-          PARAMS=$(jq -nc \
-            --arg cmd "sudo -u itential ${DEPLOY_SCRIPT} ${REPO} ${SHA} https://raw.githubusercontent.com/${REPO}/${SHA}/import.yml" \
-            '{commands: [$cmd], executionTimeout: ["900"]}')
-
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids "${IAG5_INSTANCE_ID}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy ${SHA:0:7} from ${REPO}" \
-            --cloud-watch-output-config CloudWatchOutputEnabled=true \
-            --parameters "${PARAMS}" \
-            --query 'Command.CommandId' \
-            --output text)
-
-          echo "command_id=${CMD_ID}" >> "$GITHUB_OUTPUT"
-          echo "SSM command id: ${CMD_ID}"
-
-      - name: Wait for SSM command + report
+      - name: Validate import.yml
         run: |
           set -euo pipefail
-          CMD_ID="${{ steps.ssm.outputs.command_id }}"
+          curl -fsS -X POST "${PLATFORM_URL}/gateway_manager/v1/gateways/${CLUSTER_ID}/configuration/import" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg url "$REPO_URL" --arg sha "$SHA" \
+                '{options: {source: "git", git: {url: $url, file: "import.yml", reference: $sha}, validate: true}}')"
 
-          aws ssm wait command-executed \
-            --command-id "${CMD_ID}" \
-            --instance-id "${IAG5_INSTANCE_ID}" || true
+      - name: Dry-run diff
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "${PLATFORM_URL}/gateway_manager/v1/gateways/${CLUSTER_ID}/configuration/import" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg url "$REPO_URL" --arg sha "$SHA" \
+                '{options: {source: "git", git: {url: $url, file: "import.yml", reference: $sha}, check: true}}')" \
+            | tee /tmp/diff.json
+          {
+            echo "### Planned changes"
+            echo '```json'
+            jq . /tmp/diff.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "${CMD_ID}" \
-            --instance-id "${IAG5_INSTANCE_ID}" \
-            --query 'Status' --output text)
-
-          echo "::group::stdout"
-          aws ssm get-command-invocation \
-            --command-id "${CMD_ID}" \
-            --instance-id "${IAG5_INSTANCE_ID}" \
-            --query 'StandardOutputContent' --output text
-          echo "::endgroup::"
-
-          echo "::group::stderr"
-          aws ssm get-command-invocation \
-            --command-id "${CMD_ID}" \
-            --instance-id "${IAG5_INSTANCE_ID}" \
-            --query 'StandardErrorContent' --output text
-          echo "::endgroup::"
-
-          echo "Final status: ${STATUS}"
-          [ "${STATUS}" = "Success" ]
+      - name: Apply
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST "${PLATFORM_URL}/gateway_manager/v1/gateways/${CLUSTER_ID}/configuration/import" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg url "$REPO_URL" --arg sha "$SHA" \
+                '{options: {source: "git", git: {url: $url, file: "import.yml", reference: $sha}, force: true}}')" \
+            | tee /tmp/result.json
+          {
+            echo "### Applied"
+            echo '```json'
+            jq . /tmp/result.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
