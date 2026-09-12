@@ -250,6 +250,25 @@ decorators:
       required: [target_ip]
       additionalProperties: false
 
+  - name: snmp-check-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: snmp-check inputs
+      type: object
+      properties:
+        device_ip:
+          description: Device IP to query over SNMP
+          type: string
+        community:
+          description: SNMP v2c community string (read-only)
+          type: string
+          default: itential-lab-ro
+        interface_name:
+          description: Interface name as reported by IF-MIB::ifDescr (e.g. Loopback117)
+          type: string
+      required: [device_ip, interface_name]
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -495,4 +514,13 @@ services:
     filename: main.py
     decorator: ping-check-input
     tags: [validation, network, ping]
+
+  - name: snmp-check
+    type: python-script
+    description: Independent interface verification via SNMP (IF-MIB/IP-MIB) — confirms interface admin/oper status and IP binding through a protocol path separate from the device's own CLI/SSH output
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/snmp-check
+    filename: main.py
+    decorator: snmp-check-input
+    tags: [validation, network, snmp]
 
