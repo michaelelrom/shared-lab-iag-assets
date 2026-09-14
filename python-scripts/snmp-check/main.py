@@ -5,12 +5,36 @@ Deliberately not another SSH/CLI check -- this confirms interface state
 through a completely different protocol path than the MOP command
 templates use, so it catches cases where the SSH-based checks alone
 would be wrong (device credentials swapped, CLI parsing bug, etc.).
+
+device_ip can be passed explicitly via params, or left unset and targeted
+via runService's inventory/nodeNames instead -- gateway5 resolves the node
+and pipes its attributes (including itential_host) to this script's stdin.
+An explicit --device_ip always takes precedence over the piped inventory.
 """
 import argparse
 import json
 import sys
 
 from puresnmp import Client, V2C, PyWrapper
+
+
+def read_stdin_inventory():
+    """Read the InventoryInfo JSON gateway5 pipes to stdin when a runService
+    call is targeted via inventory/nodeNames. Returns the first node dict,
+    or None if stdin is a TTY or the payload is missing/malformed."""
+    if sys.stdin.isatty():
+        return None
+    raw = sys.stdin.read()
+    if not raw or not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or "inventory_nodes" not in data:
+        return None
+    nodes = data.get("inventory_nodes") or []
+    return nodes[0] if nodes else None
 
 IF_DESCR = "1.3.6.1.2.1.2.2.1.2"
 IF_ADMIN_STATUS = "1.3.6.1.2.1.2.2.1.7"
@@ -67,17 +91,32 @@ async def run_check(device_ip, community, interface_name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device_ip", required=True)
+    parser.add_argument("--device_ip", required=False, default=None)
     parser.add_argument("--community", default="")
     parser.add_argument("--interface_name", required=True)
     args = parser.parse_args()
 
     community = args.community or "itential-lab-ro"
 
+    device_ip = args.device_ip or None
+    if not device_ip:
+        node = read_stdin_inventory()
+        if node:
+            device_ip = (node.get("attributes") or {}).get("itential_host")
+
+    if not device_ip:
+        print(json.dumps({
+            "success": False,
+            "error": "device_ip not provided and no inventory node was targeted "
+                     "(pass --device_ip, or target this service via inventory/nodeNames)",
+            "interface_name": args.interface_name,
+        }))
+        return 0
+
     try:
         import asyncio
 
-        result = asyncio.run(run_check(args.device_ip, community, args.interface_name))
+        result = asyncio.run(run_check(device_ip, community, args.interface_name))
         print(json.dumps(result))
         return 0
     except Exception as e:

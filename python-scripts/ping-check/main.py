@@ -5,12 +5,36 @@ Runs OS `ping` against a target IP and parses packet loss / RTT. This is
 deliberately NOT a device CLI command (no MOP template can do this) -- it
 validates that a change is reachable over the network path from the
 gateway, independent of what the device itself reports in its running-config.
+
+target_ip can be passed explicitly via params, or left unset and targeted
+via runService's inventory/nodeNames instead -- gateway5 resolves the node
+and pipes its attributes (including itential_host) to this script's stdin.
+An explicit --target_ip always takes precedence over the piped inventory.
 """
 import argparse
 import json
 import re
 import subprocess
 import sys
+
+
+def read_stdin_inventory():
+    """Read the InventoryInfo JSON gateway5 pipes to stdin when a runService
+    call is targeted via inventory/nodeNames. Returns the first node dict,
+    or None if stdin is a TTY or the payload is missing/malformed."""
+    if sys.stdin.isatty():
+        return None
+    raw = sys.stdin.read()
+    if not raw or not raw.strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or "inventory_nodes" not in data:
+        return None
+    nodes = data.get("inventory_nodes") or []
+    return nodes[0] if nodes else None
 
 
 def run_ping(target_ip: str, count: int, timeout: int) -> dict:
@@ -52,7 +76,7 @@ def run_ping(target_ip: str, count: int, timeout: int) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target_ip", required=True)
+    parser.add_argument("--target_ip", required=False, default=None)
     parser.add_argument("--count", default="4")
     parser.add_argument("--timeout", default="2")
     args = parser.parse_args()
@@ -62,12 +86,26 @@ def main() -> int:
     count = int(args.count) if args.count else 4
     timeout = int(args.timeout) if args.timeout else 2
 
+    target_ip = args.target_ip or None
+    if not target_ip:
+        node = read_stdin_inventory()
+        if node:
+            target_ip = (node.get("attributes") or {}).get("itential_host")
+
+    if not target_ip:
+        print(json.dumps({
+            "success": False,
+            "error": "target_ip not provided and no inventory node was targeted "
+                     "(pass --target_ip, or target this service via inventory/nodeNames)",
+        }))
+        return 0
+
     try:
-        result = run_ping(args.target_ip, count, timeout)
+        result = run_ping(target_ip, count, timeout)
         print(json.dumps(result))
         return 0
     except Exception as e:
-        print(json.dumps({"success": False, "target_ip": args.target_ip, "error": str(e)}))
+        print(json.dumps({"success": False, "target_ip": target_ip, "error": str(e)}))
         return 0
 
 
