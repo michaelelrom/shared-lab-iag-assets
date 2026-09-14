@@ -237,7 +237,7 @@ decorators:
       type: object
       properties:
         target_ip:
-          description: IP address to ping from the gateway host
+          description: IP address to ping from the gateway host. Optional — if omitted, target this service via runService's inventory/nodeNames instead and the script resolves the IP from the targeted node's itential_host attribute.
           type: string
         count:
           description: Number of ping packets to send
@@ -247,7 +247,6 @@ decorators:
           description: Per-packet timeout in seconds
           type: string
           default: "2"
-      required: [target_ip]
       additionalProperties: false
 
   - name: snmp-check-input
@@ -257,7 +256,7 @@ decorators:
       type: object
       properties:
         device_ip:
-          description: Device IP to query over SNMP
+          description: Device IP to query over SNMP. Optional — if omitted, target this service via runService's inventory/nodeNames instead and the script resolves the IP from the targeted node's itential_host attribute.
           type: string
         community:
           description: SNMP v2c community string (read-only)
@@ -266,7 +265,7 @@ decorators:
         interface_name:
           description: Interface name as reported by IF-MIB::ifDescr (e.g. Loopback117)
           type: string
-      required: [device_ip, interface_name]
+      required: [interface_name]
       additionalProperties: false
 
 services:
