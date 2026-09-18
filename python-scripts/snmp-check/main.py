@@ -93,7 +93,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device_ip", required=False, default=None)
     parser.add_argument("--community", default="")
-    parser.add_argument("--interface_name", required=True)
+    parser.add_argument("--interface", required=True)
     args = parser.parse_args()
 
     community = args.community or "itential-lab-ro"
@@ -109,18 +109,18 @@ def main():
             "success": False,
             "error": "device_ip not provided and no inventory node was targeted "
                      "(pass --device_ip, or target this service via inventory/nodeNames)",
-            "interface_name": args.interface_name,
+            "interface_name": args.interface,
         }))
         return 0
 
     try:
         import asyncio
 
-        result = asyncio.run(run_check(device_ip, community, args.interface_name))
+        result = asyncio.run(run_check(device_ip, community, args.interface))
         print(json.dumps(result))
         return 0
     except Exception as e:
-        print(json.dumps({"success": False, "error": str(e), "interface_name": args.interface_name}))
+        print(json.dumps({"success": False, "error": str(e), "interface_name": args.interface}))
         return 0
 
 
