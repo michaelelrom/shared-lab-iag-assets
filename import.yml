@@ -262,10 +262,10 @@ decorators:
           description: SNMP v2c community string (read-only)
           type: string
           default: itential-lab-ro
-        interface_name:
+        interface:
           description: Interface name as reported by IF-MIB::ifDescr (e.g. Loopback117)
           type: string
-      required: [interface_name]
+      required: [interface]
       additionalProperties: false
 
 services:
