@@ -125,6 +125,21 @@ decorators:
       required: [commands]
       additionalProperties: false
 
+  - name: write-backup-copy-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: write-backup-copy inputs
+      type: object
+      properties:
+        path:
+          description: Relative path (joined under a fixed base directory on the gateway host, e.g. shared-lab-ios/2026-09-24T22-08-58.cfg)
+          type: string
+        content:
+          description: Text content to write
+          type: string
+      required: [path, content]
+      additionalProperties: false
+
   - name: netsdk-thycotic-run-command-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -522,4 +537,13 @@ services:
     filename: main.py
     decorator: snmp-check-input
     tags: [validation, network, snmp]
+
+  - name: write-backup-copy
+    type: python-script
+    description: Writes text content to a path under /opt/backup-copies on the gateway host — local second-copy landing spot for config backups
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/write-backup-copy
+    filename: main.py
+    decorator: write-backup-copy-input
+    tags: [utility, backup]
 
