@@ -140,6 +140,18 @@ decorators:
       required: [path, content]
       additionalProperties: false
 
+  - name: scp-push-startup-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: scp-push-startup-config inputs
+      type: object
+      properties:
+        content:
+          description: Config text to write to the device's startup-config via SCP
+          type: string
+      required: [content]
+      additionalProperties: false
+
   - name: netsdk-thycotic-run-command-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -546,4 +558,13 @@ services:
     filename: main.py
     decorator: write-backup-copy-input
     tags: [utility, backup]
+
+  - name: scp-push-startup-config
+    type: python-script
+    description: Pushes config text directly to a Cisco device's startup-config via SCP (byte-exact NVRAM write, no copy command or prompt) — host/user/password come from inventory targeting, never from the calling workflow
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/scp-push-startup-config
+    filename: main.py
+    decorator: scp-push-startup-config-input
+    tags: [utility, restore, cisco]
 
