@@ -13,6 +13,8 @@ import json
 import os
 import sys
 
+UTC = datetime.timezone.utc
+
 BASE_DIR = "/opt/backup-copies"
 VENDOR_PREFIXES = ("cisco-ios", "cisco-nxos")
 
@@ -33,7 +35,7 @@ def main() -> int:
             rel = os.path.relpath(full, BASE_DIR)
             prefix = classify(rel.split(os.sep))
             mtime = os.path.getmtime(full)
-            mtime_iso = datetime.datetime.utcfromtimestamp(mtime).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            mtime_iso = datetime.datetime.fromtimestamp(mtime, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             size = os.path.getsize(full)
             devices.setdefault(prefix, {"count": 0, "files": []})
             devices[prefix]["count"] += 1
