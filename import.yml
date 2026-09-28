@@ -152,6 +152,42 @@ decorators:
       required: [content]
       additionalProperties: false
 
+  - name: read-backup-copy-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: read-backup-copy inputs
+      type: object
+      properties:
+        path:
+          description: Relative path (joined under a fixed base directory on the gateway host, e.g. shared-lab-ios/2026-09-24T22-08-58.cfg)
+          type: string
+      required: [path]
+      additionalProperties: false
+
+  - name: list-backup-copies-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: list-backup-copies inputs
+      type: object
+      properties: {}
+      additionalProperties: false
+
+  - name: prune-backup-copies-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: prune-backup-copies inputs
+      type: object
+      properties:
+        keep-count:
+          description: Number of most-recent backups to keep per device
+          type: integer
+        dry-run:
+          description: If true, report candidates without deleting
+          type: string
+          default: "true"
+      required: [keep-count]
+      additionalProperties: false
+
   - name: netsdk-thycotic-run-command-input
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -567,4 +603,31 @@ services:
     filename: main.py
     decorator: scp-push-startup-config-input
     tags: [utility, restore, cisco]
+
+  - name: read-backup-copy
+    type: python-script
+    description: Reads text content from a path under /opt/backup-copies on the gateway host — read-side counterpart to write-backup-copy
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/read-backup-copy
+    filename: main.py
+    decorator: read-backup-copy-input
+    tags: [utility, backup, restore]
+
+  - name: list-backup-copies
+    type: python-script
+    description: Lists all local backup copies under /opt/backup-copies on the gateway host, grouped by device
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/list-backup-copies
+    filename: main.py
+    decorator: list-backup-copies-input
+    tags: [utility, backup]
+
+  - name: prune-backup-copies
+    type: python-script
+    description: Prunes local backup copies under /opt/backup-copies on the gateway host, keeping only the N most recent per device
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/prune-backup-copies
+    filename: main.py
+    decorator: prune-backup-copies-input
+    tags: [utility, backup, pruning]
 
