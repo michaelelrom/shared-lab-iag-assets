@@ -155,6 +155,28 @@ Wire to the broker contracts when creating or updating an inventory:
 }
 ```
 
+## Installing on a Gateway 5 server
+
+**1. Create the Gateway 5 services.** Each operation is a `python-script` service
+([how to create a service](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)).
+[`import.sample.yml`](import.sample.yml) defines the repository, the input
+decorators and all 6 services in one file. Edit the repository `url` and
+`reference` to point at where you host this driver, then import it:
+
+```bash
+export GATEWAY_APPLICATION_MODE=client
+iagctl db import import.sample.yml --force
+```
+
+You can also import the file from
+[Gateway Manager](https://docs.itential.com/docs/gateway-manager) in Itential Platform.
+The runner needs Python with network access to install `requirements.txt`.
+
+**2. Set up Inventory Manager.** Add the connection attributes to each device, then map
+the actions to the services above (see
+[Inventory Manager](https://docs.itential.com/itential-platform/inventory-manager/overview)
+and [Configuration Manager](https://docs.itential.com/itential-platform/configuration-manager/overview)).
+
 ## Local testing
 
 The driver falls through to `itential_password` or `--password` if Thycotic
