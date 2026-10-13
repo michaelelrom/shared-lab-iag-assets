@@ -14,6 +14,7 @@ taken from the Inventory Manager record on stdin.
   - [gNMI Subscribe](#gnmi-subscribe)
   - [Config Manager (broker) services](#config-manager-broker-services)
   - [gNOI](#gnoi)
+- [Installing on a Gateway 5 server](#installing-on-a-gateway-5-server)
 - [Connection pooling](#connection-pooling)
 - [Invocation model](#invocation-model)
 - [Inventory attributes](#inventory-attributes)
@@ -133,6 +134,48 @@ reads the protobuf service descriptors instead of needing a wrapper per RPC.
 metadata, then a stream of chunks, then a hash). The driver sends client-streaming
 RPCs as a single message, so a software upload through `gnoi` will not work. Use
 the device's own tooling for image transfer.
+
+## Installing on a Gateway 5 server
+
+Two steps: add the services to Gateway 5, then set up the devices in Inventory Manager.
+
+**1. Add the services to Gateway 5.** The repository's manifest (`import.yml`, or
+`import.yaml` beside `main.py`) defines the repository and all 32 services. Point
+its `repository` url and `reference` at where you host this driver, then load it
+on the server:
+
+```bash
+export GATEWAY_APPLICATION_MODE=client
+iagctl db import import.yml --force
+iagctl get services | grep grpc        # check they're there
+```
+
+You can also import the manifest from
+[Gateway Manager](https://docs.itential.com/docs/gateway-manager) in Itential
+Platform instead of using `iagctl` on the server.
+
+Re-run the import after any code or manifest change. `db import` loads the whole manifest
+in one go; the same objects can be created one at a time with
+[`iagctl create repository`](https://docs.itential.com/itential-automation-gateway/iag-5-latest/iagctl/create-repository),
+[`iagctl create decorator`](https://docs.itential.com/itential-gateway/5/iagctl/create-decorator) and
+[`iagctl create service python-script`](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)
+(each manifest service maps to one of those, with `GRPC_OP` passed as `--env`).
+The runner needs Python with
+network access to install `requirements.txt`, and a route to each device's gNMI
+port (usually 57400).
+
+**2. Set up Inventory Manager.** Add the connection attributes to each device
+([Inventory attributes](#inventory-attributes)), then map the actions to services
+(see [Inventory Manager](https://docs.itential.com/itential-platform/inventory-manager/overview)
+and [Configuration Manager](https://docs.itential.com/itential-platform/configuration-manager/overview)
+in the product docs):
+
+| Inventory Manager action | Service |
+|---|---|
+| `is-alive` | `grpc-is-alive` |
+| `get-config` | `grpc-gnmi-get-config-text` |
+| `set-config` | `grpc-gnmi-set-config-text` |
+| `run-command` | `grpc-run-command` |
 
 ## Connection pooling
 
