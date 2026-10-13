@@ -6,7 +6,7 @@
 # device-drivers/f5-rest in that repository.
 #
 #   export GATEWAY_APPLICATION_MODE=client
-#   iagctl db import import.sample.yml --force
+#   iagctl db import import.yaml --force
 
 repositories:
   - name: f5-rest-driver

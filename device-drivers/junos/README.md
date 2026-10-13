@@ -200,13 +200,13 @@ allow TCP/22 (CLI) and TCP/830 (NETCONF) from the IAG5 host.
 
 **1. Create the Gateway 5 services.** Each operation is a `python-script` service
 ([how to create a service](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)).
-[`import.sample.yml`](import.sample.yml) defines the repository, the input
+[`import.yaml`](import.yaml) defines the repository, the input
 decorators and all 7 services in one file. Edit the repository `url` and
 `reference` to point at where you host this driver, then import it:
 
 ```bash
 export GATEWAY_APPLICATION_MODE=client
-iagctl db import import.sample.yml --force
+iagctl db import import.yaml --force
 ```
 
 You can also import the file from
