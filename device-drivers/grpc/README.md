@@ -25,9 +25,8 @@ taken from the Inventory Manager record on stdin.
 
 ## Operations
 
-One Gateway 5 service per operation, 32 in total. `import.yaml` (or the repo-wide
-`import.yml`) is checked against the Python operation registry by
-`tests/test_service_manifest.py`, so a service without an operation, or an
+One Gateway 5 service per operation, 32 in total. [`import.sample.yml`](import.sample.yml) is checked against the Python operation
+registry by `tests/test_service_manifest.py`, so a service without an operation, or an
 operation without a service, fails the test suite.
 
 ### Connection and discovery
@@ -137,38 +136,26 @@ the device's own tooling for image transfer.
 
 ## Installing on a Gateway 5 server
 
-Two steps: add the services to Gateway 5, then set up the devices in Inventory Manager.
-
-**1. Add the services to Gateway 5.** The repository's manifest (`import.yml`, or
-`import.yaml` beside `main.py`) defines the repository and all 32 services. Point
-its `repository` url and `reference` at where you host this driver, then load it
-on the server:
+**1. Create the Gateway 5 services.** Each operation is a `python-script` service
+([how to create a service](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)).
+[`import.sample.yml`](import.sample.yml) defines the repository, the input
+decorators and all 32 services in one file. Edit the repository `url` and
+`reference` to point at where you host this driver, then import it:
 
 ```bash
 export GATEWAY_APPLICATION_MODE=client
-iagctl db import import.yml --force
-iagctl get services | grep grpc        # check they're there
+iagctl db import import.sample.yml --force
 ```
 
-You can also import the manifest from
-[Gateway Manager](https://docs.itential.com/docs/gateway-manager) in Itential
-Platform instead of using `iagctl` on the server.
-
-Re-run the import after any code or manifest change. `db import` loads the whole manifest
-in one go; the same objects can be created one at a time with
-[`iagctl create repository`](https://docs.itential.com/itential-automation-gateway/iag-5-latest/iagctl/create-repository),
-[`iagctl create decorator`](https://docs.itential.com/itential-gateway/5/iagctl/create-decorator) and
-[`iagctl create service python-script`](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)
-(each manifest service maps to one of those, with `GRPC_OP` passed as `--env`).
-The runner needs Python with
-network access to install `requirements.txt`, and a route to each device's gNMI
-port (usually 57400).
+You can also import the file from
+[Gateway Manager](https://docs.itential.com/docs/gateway-manager) in Itential Platform.
+The runner needs Python with network access to install `requirements.txt`, and a
+route to each device's gNMI port (usually 57400).
 
 **2. Set up Inventory Manager.** Add the connection attributes to each device
 ([Inventory attributes](#inventory-attributes)), then map the actions to services
 (see [Inventory Manager](https://docs.itential.com/itential-platform/inventory-manager/overview)
-and [Configuration Manager](https://docs.itential.com/itential-platform/configuration-manager/overview)
-in the product docs):
+and [Configuration Manager](https://docs.itential.com/itential-platform/configuration-manager/overview)):
 
 | Inventory Manager action | Service |
 |---|---|
@@ -274,7 +261,7 @@ Consequences:
 ## Invocation model
 
 **One service per operation**, all pointing at `main.py` with a different
-`GRPC_OP`. `import.yaml` registers them and their input schemas (booleans are
+`GRPC_OP`. `import.sample.yml` registers them and their input schemas (booleans are
 `"true"`/`"false"` strings; unset optional fields arrive as empty strings and
 are ignored).
 
@@ -386,7 +373,7 @@ def interface_counters(session, params):
 
 `session` is a connected channel (`session.gnmi`, `session.channel`,
 `session.metadata`, `session.stub(name)`); `params` are the `--key value` flags.
-Mark `idempotent=True` only if replaying is safe. Add a service to `import.yaml`
+Mark `idempotent=True` only if replaying is safe. Add a service to `import.sample.yml`
 with `GRPC_OP: interface-counters` and a decorator for its inputs. Pooling
 works for plugin operations automatically.
 

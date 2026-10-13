@@ -1,7 +1,8 @@
 """The Gateway 5 service manifest and the Python operation registry must describe the same set of operations.
 
-The manifest is ``import.yaml`` beside main.py, or the repo-wide ``import.yml`` two levels up when this driver
-lives in a shared assets repository. Every service names its operation in ``runtime.env.GRPC_OP``.
+The manifest is the sample ``import.sample.yml`` beside main.py. When this driver lives in a shared assets
+repository, the repo-wide ``import.yml`` two levels up must list the same services. Every service names its
+operation in ``runtime.env.GRPC_OP``.
 """
 
 import os
@@ -15,11 +16,8 @@ yaml = pytest.importorskip("yaml")
 
 registry.load_plugins(conftest.BASE)
 
-CANDIDATES = (
-    os.path.join(conftest.BASE, "import.yaml"),
-    os.path.join(conftest.BASE, "import.yml"),
-    os.path.join(conftest.BASE, "..", "..", "import.yml"),
-)
+SAMPLE = os.path.join(conftest.BASE, "import.sample.yml")
+REPO_WIDE = os.path.join(conftest.BASE, "..", "..", "import.yml")
 
 import main  # noqa: E402
 
@@ -27,16 +25,13 @@ import main  # noqa: E402
 KNOWN_OPS = set(registry.OPERATIONS) | set(main.CONTROL_OPS)
 
 
-def load():
-    for path in CANDIDATES:
-        if os.path.exists(path):
-            with open(path) as handle:
-                return yaml.safe_load(handle)
-    pytest.skip("no import.yaml / import.yml next to the driver")
+def load(path=SAMPLE):
+    with open(path) as handle:
+        return yaml.safe_load(handle)
 
 
-def grpc_services():
-    return [s for s in load().get("services", []) if (s.get("runtime", {}).get("env") or {}).get("GRPC_OP")]
+def grpc_services(path=SAMPLE):
+    return [s for s in load(path).get("services", []) if (s.get("runtime", {}).get("env") or {}).get("GRPC_OP")]
 
 
 def test_every_service_points_at_a_real_operation():
@@ -68,3 +63,11 @@ def test_decorators_exist_and_describe_known_inputs():
             schema = decorators[ref]
             for key in schema.get("required", []):
                 assert key in schema["properties"], f"{ref} requires undeclared input {key}"
+
+
+def test_sample_matches_repo_wide_manifest():
+    if not os.path.exists(REPO_WIDE):
+        pytest.skip("driver is not inside a shared assets repository")
+    sample = {s["name"]: s["runtime"]["env"]["GRPC_OP"] for s in grpc_services()}
+    repo = {s["name"]: s["runtime"]["env"]["GRPC_OP"] for s in grpc_services(REPO_WIDE)}
+    assert sample == repo
