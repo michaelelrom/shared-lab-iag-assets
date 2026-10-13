@@ -25,7 +25,7 @@ taken from the Inventory Manager record on stdin.
 
 ## Operations
 
-One Gateway 5 service per operation, 32 in total. [`import.sample.yml`](import.sample.yml) is checked against the Python operation
+One Gateway 5 service per operation, 32 in total. [`import.yaml`](import.yaml) is checked against the Python operation
 registry by `tests/test_service_manifest.py`, so a service without an operation, or an
 operation without a service, fails the test suite.
 
@@ -138,13 +138,13 @@ the device's own tooling for image transfer.
 
 **1. Create the Gateway 5 services.** Each operation is a `python-script` service
 ([how to create a service](https://docs.itential.com/itential-automation-gateway/iagctl/create-service-python-script)).
-[`import.sample.yml`](import.sample.yml) defines the repository, the input
+[`import.yaml`](import.yaml) defines the repository, the input
 decorators and all 32 services in one file. Edit the repository `url` and
 `reference` to point at where you host this driver, then import it:
 
 ```bash
 export GATEWAY_APPLICATION_MODE=client
-iagctl db import import.sample.yml --force
+iagctl db import import.yaml --force
 ```
 
 You can also import the file from
@@ -261,7 +261,7 @@ Consequences:
 ## Invocation model
 
 **One service per operation**, all pointing at `main.py` with a different
-`GRPC_OP`. `import.sample.yml` registers them and their input schemas (booleans are
+`GRPC_OP`. `import.yaml` registers them and their input schemas (booleans are
 `"true"`/`"false"` strings; unset optional fields arrive as empty strings and
 are ignored).
 
@@ -373,7 +373,7 @@ def interface_counters(session, params):
 
 `session` is a connected channel (`session.gnmi`, `session.channel`,
 `session.metadata`, `session.stub(name)`); `params` are the `--key value` flags.
-Mark `idempotent=True` only if replaying is safe. Add a service to `import.sample.yml`
+Mark `idempotent=True` only if replaying is safe. Add a service to `import.yaml`
 with `GRPC_OP: interface-counters` and a decorator for its inputs. Pooling
 works for plugin operations automatically.
 

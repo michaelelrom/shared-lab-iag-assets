@@ -1,6 +1,6 @@
 """The Gateway 5 service manifest and the Python operation registry must describe the same set of operations.
 
-The manifest is the sample ``import.sample.yml`` beside main.py. When this driver lives in a shared assets
+The manifest is the sample ``import.yaml`` beside main.py. When this driver lives in a shared assets
 repository, the repo-wide ``import.yml`` two levels up must list the same services. Every service names its
 operation in ``runtime.env.GRPC_OP``.
 """
@@ -16,7 +16,7 @@ yaml = pytest.importorskip("yaml")
 
 registry.load_plugins(conftest.BASE)
 
-SAMPLE = os.path.join(conftest.BASE, "import.sample.yml")
+SAMPLE = os.path.join(conftest.BASE, "import.yaml")
 REPO_WIDE = os.path.join(conftest.BASE, "..", "..", "import.yml")
 
 import main  # noqa: E402
