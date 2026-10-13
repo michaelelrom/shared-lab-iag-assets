@@ -440,3 +440,58 @@ def test_run_command_accepts_json_array_and_requires_a_command(make_device):
     out = run(port, "run-command", {"commands": json.dumps(["show version"])})
     assert out["results"][0]["output"] == "v"
     assert run(port, "run-command", {})["success"] is False
+
+
+# ------------------------------------------- brace-text config (Config Manager Golden Config)
+
+def test_get_config_text_is_junos_style_and_round_trips(make_device):
+    dev, port = make_device()
+    text = run(port, "get-config-text", {})
+    assert text.startswith("system {") and "hostname mock;" in text
+    assert "interface[name=eth0] {" in text
+    from grpc_driver import cfgtext
+    assert cfgtext.render(cfgtext.parse(text)).strip() == text.strip()
+
+
+def test_text_values_keep_their_types():
+    from grpc_driver import cfgtext
+    tree = {"a": {"num": 9000, "flag": True, "str_num": "123", "str_bool": "true", "words": "two words", "list": ["x", 1]}}
+    assert cfgtext.parse(cfgtext.render(tree)) == tree
+
+
+def test_set_config_text_adds_changes_and_deletes(make_device):
+    dev, port = make_device()
+    parents = ["interfaces", "interface[name=eth0]", "config"]
+    run(port, "set-config-text", {"config": json.dumps([
+        {"parents": parents, "old": "", "new": "description golden;"},
+        {"parents": parents, "old": "", "new": "mtu 9000"},
+    ])})
+    assert config(dev, "interfaces", "interface[name=eth0]", "config")["description"] == "golden"
+    assert config(dev, "interfaces", "interface[name=eth0]", "config")["mtu"] == 9000
+    run(port, "set-config-text", {"config": json.dumps([{"parents": parents, "old": "description golden;", "new": ""}])})
+    assert "description" not in config(dev, "interfaces", "interface[name=eth0]", "config")
+    assert "hostname mock" in run(port, "get-config-text", {})
+
+
+def test_set_config_text_union_replace_mode(make_device):
+    dev, port = make_device()
+    run(port, "set-config-text", {"mode": "union_replace", "config": json.dumps([
+        {"parents": ["system", "config"], "old": "", "new": "hostname only-this;"}])})
+    text = run(port, "get-config-text", {})
+    assert "only-this" in text and "interface[name=eth0]" not in text
+
+
+def test_grpc_port_wins_over_itential_port_which_wins_over_default():
+    import main
+
+    def port(attrs, argv=()):
+        args, _ = main.build_parser().parse_known_args(["--op", "get", *argv])
+        node = {"attributes": {"itential_host": "h", "itential_user": "u", "itential_password": "p", **attrs}}
+        return main.resolve_connection(args, node).port
+
+    assert port({"itential_port": 57401}) == 57401
+    assert port({"itential_driver_options": {"grpc": {"port": 57402}}}) == 57402
+    assert port({"itential_port": 22, "itential_driver_options": {"grpc": {"port": 57402}}}) == 57402
+    assert port({"itential_port": 22, "itential_driver_options": {"grpc": {"port": 57402}}}, ["--port", "9"]) == 9
+    assert port({"itential_port": 57401}, ["--port", "9"]) == 9
+    assert port({}) == 57400

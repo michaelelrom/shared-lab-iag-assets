@@ -119,7 +119,7 @@ def resolve_connection(args, node):
 
     return ConnSpec(
         host=host,
-        port=int(pick("port", opt_key="port", default=57400)),
+        port=int(pick("port", opt_key="port") or pick("port", "itential_port", default=57400)),
         username=user,
         password=password,
         insecure=as_bool(pick("insecure", opt_key="insecure")),
@@ -147,7 +147,7 @@ def run_operation(spec, op, params, mode):
     if mode != "off":
         payload = {"op": op, "conn": spec.to_dict(), "params": params}
         try:
-            reply = poold.request(payload, timeout=spec.timeout + spec.rpc_timeout + 10)
+            reply = poold.request(payload, timeout=spec.timeout + registry.deadline_for(op, params, spec) + 10)
         except poold.PoolUnavailable as exc:
             if mode == "required":
                 raise RuntimeError(f"connection pool required but unavailable: {exc}")

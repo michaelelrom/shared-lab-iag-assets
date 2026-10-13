@@ -8,7 +8,10 @@ same JSON.
 """
 
 import json
+import queue
 import re
+import threading
+import time
 
 import grpc
 
@@ -184,6 +187,15 @@ def _encoding(session, requested):
     return name
 
 
+def _rpc_error(session, exc):
+    code = exc.code()
+    return DriverError(
+        f"GRPC ERROR Host: {session.spec.label()}, Error: {exc.details()}",
+        code.name.lower(),
+        evict=code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.UNAUTHENTICATED),
+    )
+
+
 def _unary(session, method, request, response_cls):
     key = ("callable", method)
     call = session.cache.get(key)
@@ -197,12 +209,7 @@ def _unary(session, method, request, response_cls):
     try:
         return call(request, metadata=session.metadata, timeout=session.spec.rpc_timeout)
     except grpc.RpcError as exc:
-        code = exc.code()
-        raise DriverError(
-            f"GRPC ERROR Host: {session.spec.label()}, Error: {exc.details()}",
-            code.name.lower(),
-            evict=code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.UNAUTHENTICATED),
-        )
+        raise _rpc_error(session, exc)
 
 
 def get(session, paths, datatype="all", encoding=None, prefix="", target=None, origin=None, raw=False):
@@ -217,22 +224,27 @@ def get(session, paths, datatype="all", encoding=None, prefix="", target=None, o
     response = _unary(session, "Get", request, pb.GetResponse)
     out = {}
     if response.notification:
-        out["notification"] = []
-        for n in response.notification:
-            item = {
-                "timestamp": n.timestamp or 0,
-                "prefix": render_path(n.prefix) if (n.prefix.elem or n.prefix.origin) else None,
-                "alias": None,
-                "atomic": n.atomic,
-            }
-            if n.update:
-                item["update"] = [
-                    {"path": render_path(u.path) if (u.path.elem or u.path.origin) else None,
-                     **({"val": _decode(u.val)} if u.HasField("val") else {})}
-                    for u in n.update
-                ]
-            out["notification"].append(item)
+        out["notification"] = [notification_dict(n) for n in response.notification]
     return out
+
+
+def notification_dict(n):
+    """One gNMI Notification in pygnmi's JSON shape (shared by Get and Subscribe)."""
+    item = {
+        "timestamp": n.timestamp or 0,
+        "prefix": render_path(n.prefix) if (n.prefix.elem or n.prefix.origin) else None,
+        "alias": None,
+        "atomic": n.atomic,
+    }
+    if n.update:
+        item["update"] = [
+            {"path": render_path(u.path) if (u.path.elem or u.path.origin) else None,
+             **({"val": _decode(u.val)} if u.HasField("val") else {})}
+            for u in n.update
+        ]
+    if n.delete:
+        item["delete"] = [render_path(p) for p in n.delete]
+    return item
 
 
 def parse_version(text):
@@ -286,3 +298,111 @@ def set_(session, update=None, replace=None, union_replace=None, delete=None, en
             for r in response.response
         ]
     return out
+
+
+# ------------------------------------------------------------------- subscribe
+
+SUBSCRIBE_MODES = ("once", "poll", "stream")
+STREAM_MODES = {"sample": pb.SAMPLE, "on_change": pb.ON_CHANGE, "target_defined": pb.TARGET_DEFINED}
+LIST_MODES = {"once": pb.SubscriptionList.ONCE, "poll": pb.SubscriptionList.POLL, "stream": pb.SubscriptionList.STREAM}
+NANOS = 1_000_000_000
+
+
+def subscribe(session, mode, paths, *, duration=0, call_timeout=30, max_updates=1000, poll_count=1,
+              poll_interval=1.0, stream_mode="sample", sample_interval=0, heartbeat_interval=0,
+              suppress_redundant=False, updates_only=False, encoding=None, prefix="", target=None,
+              origin=None, raw=False):
+    """Run one bounded gNMI Subscribe and return the notifications it produced.
+
+    ``once`` reads until the device's sync_response. ``poll`` sends ``poll_count`` Poll messages,
+    ``poll_interval`` seconds apart, and reads one sync_response per poll. ``stream`` collects until
+    ``duration`` seconds pass or ``max_updates`` notifications arrive, then cancels the RPC.
+    ``stop_reason`` is ``complete``, ``duration``, ``max_updates`` or ``device_closed``.
+    """
+    if mode == "stream" and stream_mode not in STREAM_MODES:
+        raise DriverError(f"stream_mode must be one of {sorted(STREAM_MODES)}", "invalid_input")
+    sub_mode = STREAM_MODES[stream_mode] if mode == "stream" else pb.SAMPLE
+    subs = [
+        pb.Subscription(
+            path=parse_path(p, origin, raw), mode=sub_mode,
+            sample_interval=int(sample_interval * NANOS) if mode == "stream" else 0,
+            suppress_redundant=bool(suppress_redundant) if mode == "stream" else False,
+            heartbeat_interval=int(heartbeat_interval * NANOS) if mode == "stream" else 0,
+        )
+        for p in (paths or ["/"])
+    ]
+    sub_list = pb.SubscriptionList(
+        prefix=parse_path(prefix), subscription=subs, mode=LIST_MODES[mode],
+        encoding=ENCODINGS[_encoding(session, encoding)], updates_only=bool(updates_only),
+    )
+    if target:
+        sub_list.prefix.target = target
+
+    outbox = queue.Queue()
+    outbox.put(pb.SubscribeRequest(subscribe=sub_list))
+
+    def requests():
+        while True:
+            item = outbox.get()
+            if item is None:
+                return
+            yield item
+
+    call = session.channel.stream_stream(
+        "/gnmi.gNMI/Subscribe",
+        request_serializer=pb.SubscribeRequest.SerializeToString,
+        response_deserializer=pb.SubscribeResponse.FromString,
+    )
+    stream = call(requests(), metadata=session.metadata, timeout=call_timeout)
+
+    state = {"reason": None}
+    notifications, syncs = [], 0
+
+    def stop(reason):
+        if state["reason"] is None:
+            state["reason"] = reason
+            stream.cancel()
+
+    timer = None
+    if mode == "stream":
+        timer = threading.Timer(duration, stop, args=("duration",))
+        timer.daemon = True
+        timer.start()
+    elif mode == "poll":
+        def poller():
+            for i in range(poll_count):
+                if state["reason"]:
+                    return
+                outbox.put(pb.SubscribeRequest(poll=pb.Poll()))
+                if i + 1 < poll_count:
+                    time.sleep(poll_interval)
+        threading.Thread(target=poller, daemon=True).start()
+
+    try:
+        for response in stream:
+            kind = response.WhichOneof("response")
+            if kind == "update":
+                notifications.append(notification_dict(response.update))
+                if mode == "stream" and len(notifications) >= max_updates:
+                    stop("max_updates")
+                    break
+            elif kind == "sync_response":
+                syncs += 1
+                if mode == "once" or (mode == "poll" and syncs >= poll_count):
+                    state["reason"] = state["reason"] or "complete"
+                    break
+            elif kind == "error":
+                raise DriverError(f"GRPC ERROR Host: {session.spec.label()}, Error: {response.error.message}",
+                                  "subscribe_error")
+        else:
+            state["reason"] = state["reason"] or ("complete" if mode == "once" else "device_closed")
+    except grpc.RpcError as exc:
+        if not (state["reason"] and exc.code() == grpc.StatusCode.CANCELLED):
+            raise _rpc_error(session, exc)
+    finally:
+        if timer is not None:
+            timer.cancel()
+        outbox.put(None)
+        stream.cancel()
+
+    return {"notification": notifications, "sync_responses": syncs, "stop_reason": state["reason"] or "complete"}

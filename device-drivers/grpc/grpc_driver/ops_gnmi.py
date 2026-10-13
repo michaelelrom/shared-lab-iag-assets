@@ -123,6 +123,64 @@ def set_(session, params):
     )
 
 
+# ---------------------------------------------------------------- dedicated services
+# Thin entry points over ``get`` and ``set`` so each gNMI verb is its own Gateway 5 service with its own inputs.
+
+SET_COMMON = ("encoding", "prefix", "target", "origin", "raw", "force")
+
+
+def _register_get(name, datatype):
+    @operation(name, idempotent=True, description=f"gNMI Get type={datatype.upper()}")
+    def _get(session, params):
+        return get(session, {**params, "datatype": datatype})
+
+    return _get
+
+
+def _register_set(name, key, summary):
+    @operation(name, description=f"gNMI Set {summary}")
+    def _set(session, params):
+        if params.get(key) in (None, "", []):
+            raise DriverError(f"{key} is required", "invalid_input")
+        return set_(session, {k: v for k, v in params.items() if k in SET_COMMON or k == key})
+
+    return _set
+
+
+def _register_set_all(name, key, summary):
+    @operation(name, description=f"gNMI Set {summary} at the root path '/'")
+    def _set_all(session, params):
+        if not as_bool(params.get("confirm")):
+            raise DriverError(f"{name} writes at the root path '/'; pass confirm=true to proceed", "invalid_input")
+        value = as_json(params.get("value"), "value")
+        if value is None:
+            raise DriverError("value is required", "invalid_input")
+        keep = {k: v for k, v in params.items() if k in SET_COMMON}
+        return set_(session, {**keep, key: [{"path": "/", "value": value}]})
+
+    return _set_all
+
+
+for _name, _datatype in (("get-state", "state"), ("get-all", "all"), ("get-operational", "operational")):
+    _register_get(_name, _datatype)
+
+for _name, _key, _summary in (
+    ("update-config", "update", "update[] (merge)"),
+    ("replace-config", "replace", "replace[] (replace the target subtree)"),
+    ("union-replace-config", "union_replace", "union_replace[] (gNMI 0.10.0+)"),
+):
+    _register_set(_name, _key, _summary)
+
+_register_set("delete-config", "delete", "delete[] (remove the target paths)")
+
+for _name, _key, _summary in (
+    ("update-all", "update", "update[]"),
+    ("replace-all", "replace", "replace[]"),
+    ("union-replace-all", "union_replace", "union_replace[]"),
+):
+    _register_set_all(_name, _key, _summary)
+
+
 @operation("set-config", description="Config Manager remediation: [{parents, old, new}] applied as one gNMI Set")
 def set_config(session, params):
     raw = params.get("config") or params.get("changes") or params.get("config_content")

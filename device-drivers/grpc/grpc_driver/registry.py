@@ -23,21 +23,34 @@ class Operation:
     fn: Callable
     idempotent: bool = False
     description: str = ""
+    deadline: Callable = None
 
 
-def operation(name, idempotent=False, description=""):
+def operation(name, idempotent=False, description="", deadline=None):
     """Register ``fn(session, params) -> JSON-serialisable`` as operation ``name``.
 
     ``idempotent`` operations are retried once on a fresh channel when a reused
     pooled channel turns out to be dead; everything else fails fast so a
     config change or reboot is never replayed.
+
+    ``deadline(params, spec) -> seconds`` overrides the connection's
+    ``rpc_timeout`` for operations that legitimately run longer, such as a
+    bounded gNMI Subscribe stream.
     """
 
     def wrap(fn):
-        OPERATIONS[name] = Operation(name, fn, idempotent, description or (fn.__doc__ or "").strip())
+        OPERATIONS[name] = Operation(name, fn, idempotent, description or (fn.__doc__ or "").strip(), deadline)
         return fn
 
     return wrap
+
+
+def deadline_for(name, params, spec):
+    """Seconds an operation may run: its own deadline, else the connection's ``rpc_timeout``."""
+    op = OPERATIONS.get(name)
+    if op is not None and op.deadline is not None:
+        return op.deadline(params, spec)
+    return spec.rpc_timeout
 
 
 def register_service(alias, pb2_module, stub_cls, service_name):
@@ -66,7 +79,7 @@ def plugin_dirs(base_dir):
 
 def load_plugins(base_dir):
     """Import built-in operation modules, then every plugin module."""
-    for mod in ("grpc_driver.ops_gnmi", "grpc_driver.ops_gnoi", "grpc_driver.ops_reflect", "grpc_driver.ops_command"):
+    for mod in ("grpc_driver.ops_gnmi", "grpc_driver.ops_gnoi", "grpc_driver.ops_subscribe", "grpc_driver.ops_reflect", "grpc_driver.ops_command", "grpc_driver.ops_cfgtext"):
         importlib.import_module(mod)
     for directory in plugin_dirs(base_dir):
         if not os.path.isdir(directory):

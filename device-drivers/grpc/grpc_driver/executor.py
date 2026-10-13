@@ -10,7 +10,8 @@ def run_on_session(session, op_name, params):
     if op is None:
         raise DriverError(f"Unknown operation '{op_name}'. Available: {', '.join(sorted(registry.OPERATIONS))}",
                           "unknown_operation")
-    return op, call_with_deadline(session, lambda: op.fn(session, params), session.spec.rpc_timeout)
+    seconds = registry.deadline_for(op_name, params, session.spec)
+    return op, call_with_deadline(session, lambda: op.fn(session, params), seconds)
 
 
 def execute_direct(spec, op_name, params):

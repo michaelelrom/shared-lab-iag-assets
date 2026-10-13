@@ -8,10 +8,11 @@ instead of one hand-written wrapper per RPC.
 import json
 
 from google.protobuf import json_format
+from google.protobuf.descriptor import FieldDescriptor
 
 from grpc_driver import registry
 from grpc_driver.errors import DriverError
-from grpc_driver.ops_gnmi import as_json
+from grpc_driver.ops_gnmi import as_bool, as_json
 from grpc_driver.registry import operation, register_service, register_stub
 
 from gnoi.bgp import bgp_pb2, bgp_pb2_grpc
@@ -93,3 +94,50 @@ def gnoi_reboot(session, params):
     if "delay" not in request and params.get("delay"):
         request["delay"] = int(params["delay"])
     return gnoi(session, {"rpc": "system.Reboot", "request": request})
+
+
+# ---------------------------------------------------------------- dedicated services
+# One service per common system RPC. The request is built from the protobuf descriptor, so flat inputs
+# (destination, count, message, ...) map by field name; anything nested goes in ``request`` as JSON.
+
+_INT_TYPES = (FieldDescriptor.TYPE_INT32, FieldDescriptor.TYPE_INT64,
+              FieldDescriptor.TYPE_UINT32, FieldDescriptor.TYPE_UINT64)
+
+
+def _flat_request(descriptor, params):
+    request = dict(as_json(params.get("request"), "request") or {})
+    for field in descriptor.input_type.fields:
+        raw = params.get(field.name)
+        if field.name in request or raw in (None, ""):
+            continue
+        if field.type == FieldDescriptor.TYPE_BOOL:
+            request[field.name] = as_bool(raw)
+        elif field.type in _INT_TYPES:
+            try:
+                request[field.name] = int(raw)
+            except (TypeError, ValueError):
+                raise DriverError(f"{field.name} must be an integer", "invalid_input")
+        elif field.type in (FieldDescriptor.TYPE_STRING, FieldDescriptor.TYPE_ENUM):
+            request[field.name] = str(raw)
+    return request
+
+
+def _register_rpc(name, rpc, description, idempotent=False, required=()):
+    @operation(name, idempotent=idempotent, description=description)
+    def _call(session, params):
+        alias, _, stub_cls, descriptor = _method(rpc)
+        request = _flat_request(descriptor, params)
+        for field in required:
+            if field not in request:
+                raise DriverError(f"{field} is required", "invalid_input")
+        return invoke(session, alias, stub_cls, descriptor, request)
+
+    return _call
+
+
+_register_rpc("gnoi-ping", "system.Ping", "gNOI system.Ping (streamed replies returned as a list)",
+              idempotent=True, required=("destination",))
+_register_rpc("gnoi-traceroute", "system.Traceroute", "gNOI system.Traceroute (streamed hops returned as a list)",
+              idempotent=True, required=("destination",))
+_register_rpc("gnoi-reboot-status", "system.RebootStatus", "gNOI system.RebootStatus", idempotent=True)
+_register_rpc("gnoi-cancel-reboot", "system.CancelReboot", "gNOI system.CancelReboot")

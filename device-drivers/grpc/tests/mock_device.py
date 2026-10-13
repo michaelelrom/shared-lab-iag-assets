@@ -101,6 +101,9 @@ class MockDevice:
         self.sets = []           # every SetRequest as received
         self.sessions = {}       # peer -> last seen
         self.reboots = []
+        self.subscribes = []     # every SubscribeRequest.subscribe as received
+        self.polls = 0           # Poll messages received
+        self.changes = 0         # bumped on every successful Set (drives ON_CHANGE subscriptions)
         self.get_delay = spec.get("get_delay", 0)
         self.inflight = 0
         self.max_inflight = 0
@@ -173,29 +176,32 @@ class MockDevice:
                 self.inflight -= 1
 
     def _get(self, request, context):
+        return self.pb.GetResponse(notification=self._snapshot(request.prefix, list(request.path), request.type, context))
+
+    def _snapshot(self, prefix, paths, kind, context):
         pb = self.pb
         notifs = []
-        for p in list(request.path) or [pb.Path()]:
-            self._check_origins(request.prefix, p, context)
-            origin = p.origin or request.prefix.origin
+        for p in paths or [pb.Path()]:
+            self._check_origins(prefix, p, context)
+            origin = p.origin or prefix.origin
             if origin == "cli":
                 notifs.append(self._cli(p, context))
                 continue
             tree = self._tree_for(origin, context)
-            keys = path_keys(request.prefix) + path_keys(p)
+            keys = path_keys(prefix) + path_keys(p)
             with self.lock:
                 node = self._walk(tree, keys)
                 if node is None:
                     context.abort(grpc.StatusCode.NOT_FOUND, f"path not found: {keys}")
-                if request.type == pb.GetRequest.CONFIG:
+                if kind == pb.GetRequest.CONFIG:
                     node = self._only(node, "config")
-                elif request.type in (pb.GetRequest.STATE, pb.GetRequest.OPERATIONAL):
+                elif kind in (pb.GetRequest.STATE, pb.GetRequest.OPERATIONAL):
                     node = self._only(node, "state")
                 body = json.dumps(node).encode()
             notifs.append(pb.Notification(
                 timestamp=time.time_ns(),
                 update=[pb.Update(path=p, val=pb.TypedValue(json_ietf_val=body))]))
-        return pb.GetResponse(notification=notifs)
+        return notifs
 
     @staticmethod
     def _only(node, kind):
@@ -253,7 +259,50 @@ class MockDevice:
             except ValueError as exc:
                 self.trees = live
                 context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            self.changes += 1
         return pb.SetResponse(timestamp=time.time_ns(), response=results)
+
+    def Subscribe(self, request_iterator, context):
+        """ONCE: snapshot + sync. POLL: nothing until a Poll, then a snapshot + sync per Poll. STREAM: snapshot + sync, then a sample
+        every sample_interval (default 0.2s), or only on a Set for ON_CHANGE, until the client cancels."""
+        self._auth(context, "Subscribe")
+        pb = self.pb
+        first = next(request_iterator, None)
+        if first is None or first.WhichOneof("request") != "subscribe":
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "first SubscribeRequest must carry a subscription list")
+        sub = first.subscribe
+        with self.lock:
+            self.subscribes.append(sub)
+        paths = [s.path for s in sub.subscription]
+
+        def snapshot():
+            return [pb.SubscribeResponse(update=n) for n in self._snapshot(sub.prefix, paths, pb.GetRequest.ALL, context)]
+
+        sync = pb.SubscribeResponse(sync_response=True)
+        if sub.mode != pb.SubscriptionList.POLL:
+            yield from snapshot()
+            yield sync
+        if sub.mode == pb.SubscriptionList.ONCE:
+            return
+        if sub.mode == pb.SubscriptionList.POLL:
+            for msg in request_iterator:
+                if msg.WhichOneof("request") == "poll":
+                    with self.lock:
+                        self.polls += 1
+                    yield from snapshot()
+                    yield sync
+            return
+        modes = {s.mode for s in sub.subscription}
+        interval = max((s.sample_interval for s in sub.subscription), default=0) / 1e9 or 0.2
+        on_change = modes == {pb.ON_CHANGE}
+        seen = self.changes
+        while context.is_active():
+            time.sleep(0.05 if on_change else interval)
+            if on_change:
+                if self.changes == seen:
+                    continue
+                seen = self.changes
+            yield from snapshot()
 
     @staticmethod
     def _decode(update):
@@ -276,7 +325,7 @@ class MockDevice:
         if not keys:
             if not isinstance(value, dict):
                 raise ValueError("root value must be an object")
-            new = value if replace else merge(tree, value)
+            new = value if replace else merge(copy.deepcopy(tree), value)
             tree.clear()
             tree.update(new)
             return
@@ -376,6 +425,8 @@ def serve(device, port=None, host="0.0.0.0"):
             "Capabilities": uu(device.Capabilities, pb.CapabilityRequest, pb.CapabilityResponse),
             "Get": uu(device.Get, pb.GetRequest, pb.GetResponse),
             "Set": uu(device.Set, pb.SetRequest, pb.SetResponse),
+            "Subscribe": grpc.stream_stream_rpc_method_handler(
+                device.Subscribe, pb.SubscribeRequest.FromString, pb.SubscribeResponse.SerializeToString),
         }),
         grpc.method_handlers_generic_handler("gnoi.system.System", {
             "Time": uu(device.Time, system_pb2.TimeRequest, system_pb2.TimeResponse),
