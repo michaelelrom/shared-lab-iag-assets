@@ -166,7 +166,7 @@ and [Configuration Manager](https://docs.itential.com/itential-platform/configur
 
 ## Connection pooling
 
-**Gateway 4 had no pooling.** Every REST request ran
+Every REST request ran
 `with get_client(host) as gc:`, which built a new channel (TCP + TLS +
 Capabilities round trip) and closed it again.
 
@@ -221,7 +221,7 @@ Consequences:
 
 - **Pooling still pays off.** Within one runner, repeat calls skip the TCP,
   TLS and Capabilities round trip, and a burst of calls shares one channel
-  instead of opening one per call. Gateway 4 paid that cost on every request.
+  instead of opening one per call.
   The saving is smaller when devices are spread thinly across many runners,
   because each runner warms its own channel.
 - **`max_concurrent` is per daemon, not global.** Devices cap sessions per
@@ -241,8 +241,8 @@ Consequences:
 
 - **The pool only helps if the daemon survives the call.** It is started
   detached (`start_new_session`). If your Gateway 5 runtime reaps child
-  processes when a script exits, `auto` quietly degrades to one channel per call
-  (still correct, just no faster than Gateway 4). Check on your deployment:
+  processes when a script exits, `auto` quietly degrades to one channel per call.
+  Check on your deployment:
 
   ```bash
   iagctl run service python-script grpc-gnmi-get --set path='["/"]'   # twice, against a real device
