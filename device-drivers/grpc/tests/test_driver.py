@@ -138,8 +138,8 @@ def test_cli_one_shot_processes_share_pooled_channel(device, tmp_path):
     dev, port = device
     env = {"GRPC_POOL_SOCKET": f"/tmp/gp-test-{os.getpid()}.sock", "GRPC_POOL_DAEMON_IDLE": "2"}
     try:
-        first = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", env=env)
-        second = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", env=env)
+        first = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", "--pool", "auto", env=env)
+        second = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", "--pool", "auto", env=env)
         assert first.returncode == 0, first.stderr
         a, b = json.loads(first.stdout), json.loads(second.stdout)
         assert a["pool"] == {"mode": "pooled", "reused": False}
@@ -149,6 +149,25 @@ def test_cli_one_shot_processes_share_pooled_channel(device, tmp_path):
         assert status["running"] and status["hits"] == 1 and status["channels"][0]["uses"] == 2
     finally:
         run_cli(port, "pool-stop", env=env)
+
+
+def test_pooling_is_off_by_default(device):
+    dev, port = device
+    run_cli(port, "get", "--path", "/system/config")
+    run_cli(port, "get", "--path", "/system/config")
+    assert len(set(dev.peers)) == 2
+
+
+def test_pool_mode_precedence_and_default(monkeypatch):
+    import main
+    monkeypatch.delenv("GRPC_POOL", raising=False)
+    args = type("A", (), {"pool": None})()
+    assert main.pool_mode(args, {}) == "off"
+    assert main.pool_mode(type("A", (), {"pool": "required"})(), {}) == "required"
+    monkeypatch.setenv("GRPC_POOL", "bogus")
+    assert main.pool_mode(args, {}) == "off"
+    monkeypatch.setenv("GRPC_POOL", "auto")
+    assert main.pool_mode(args, {}) == "auto"
 
 
 def test_cli_pool_off_uses_new_connection_each_time(device):
@@ -161,7 +180,7 @@ def test_cli_pool_off_uses_new_connection_each_time(device):
 def test_cli_falls_back_when_daemon_cannot_start(device, tmp_path):
     dev, port = device
     env = {"GRPC_POOL_SOCKET": "/nonexistent-dir/x.sock"}
-    out = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", env=env)
+    out = run_cli(port, "get", "--path", "/system/config", "--envelope", "true", "--pool", "auto", env=env)
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout)["pool"]["mode"] == "fallback"
     required = run_cli(port, "get", "--path", "/system/config", "--pool", "required", env=env)

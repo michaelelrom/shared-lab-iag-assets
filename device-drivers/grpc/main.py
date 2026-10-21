@@ -55,7 +55,7 @@ def build_parser():
                    help="Overall deadline for the operation")
     p.add_argument("--max-concurrent", "--max_concurrent", dest="max_concurrent", type=int,
                    help="Max in-flight operations per host:port:user (default 8)")
-    p.add_argument("--pool", choices=POOL_MODES, help="auto (default), off, or required")
+    p.add_argument("--pool", choices=POOL_MODES, help="off (default), auto, or required")
     p.add_argument("--envelope", help="true = print the full result envelope instead of just the result")
     return p
 
@@ -138,8 +138,8 @@ def resolve_connection(args, node):
 
 def pool_mode(args, node):
     _, options = _opts(node)
-    mode = args.pool or options.get("pool") or os.environ.get("GRPC_POOL") or "auto"
-    return mode if mode in POOL_MODES else "auto"
+    mode = args.pool or options.get("pool") or os.environ.get("GRPC_POOL") or "off"
+    return mode if mode in POOL_MODES else "off"
 
 
 def run_operation(spec, op, params, mode):

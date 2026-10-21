@@ -180,11 +180,13 @@ Real pooling needs something that outlives the call, so this driver ships one:
  Gateway 5 call 3 ─ python main.py ─┘   (JSON lines)  (background)     per device identity
 ```
 
-- **`GRPC_POOL=auto` (default)** — use the daemon, starting it on first use. If
-  it cannot be reached or started, fall back to a private channel for that one
-  call. The result reports which happened (`--envelope true` →
-  `pool.mode` = `pooled` | `fallback`, `pool.reused`).
-- **`off`** — always a private channel (the Gateway 4 behaviour).
+- **`off` (default)** — always a private channel, one connection per call.
+  Pooling is opt-in because it needs a background daemon that outlives each
+  script call, which not every Gateway 5 runtime allows.
+- **`auto`** — use the daemon, starting it on first use. If it cannot be
+  reached or started, fall back to a private channel for that one call. The
+  result reports which happened (`--envelope true` → `pool.mode` = `pooled` |
+  `fallback`, `pool.reused`).
 - **`required`** — fail rather than fall back; use it when you want a broken
   pool to be loud.
 
@@ -250,7 +252,7 @@ Consequences:
   ```
 
   `running: false` after a call means the runtime killed it; set `GRPC_POOL=off`
-  to stop paying for the spawn attempt, or run the daemon as a real service
+  (the default) to stop paying for the spawn attempt, or run the daemon as a real service
   (`python -m grpc_driver.poold` under systemd or as a sidecar container, with
   `GRPC_POOL_SOCKET` pointing at a shared volume).
 - Credentials are passed to the daemon per request, so the daemon holds a
@@ -314,7 +316,7 @@ python main.py --op get --host 10.0.0.5 --port 57400 --user admin --password "$P
         "timeout": 10,
         "rpc_timeout": 30,
         "grpc_options": { "grpc.max_send_message_length": 104857600 },
-        "pool": "auto",
+        "pool": "off",
         "max_concurrent": 8
       }
     }
