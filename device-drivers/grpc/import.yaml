@@ -228,7 +228,7 @@ decorators:
       title: grpc-gnmi-update-all inputs
       type: object
       properties:
-        value: {"description": "JSON value written at the root path '/'"}
+        value: {"type": "object", "description": "JSON object written at the root path '/'"}
         confirm: {"type": "string", "enum": ["true", "false"], "description": "Must be true: this writes at the root path '/'"}
         encoding: {"type": "string", "description": "Override the negotiated encoding"}
         prefix: {"type": "string", "description": "gNMI path prefix"}
@@ -245,7 +245,7 @@ decorators:
       title: grpc-gnmi-replace-all inputs
       type: object
       properties:
-        value: {"description": "JSON value written at the root path '/'"}
+        value: {"type": "object", "description": "JSON object written at the root path '/'"}
         confirm: {"type": "string", "enum": ["true", "false"], "description": "Must be true: this writes at the root path '/'"}
         encoding: {"type": "string", "description": "Override the negotiated encoding"}
         prefix: {"type": "string", "description": "gNMI path prefix"}
@@ -262,7 +262,7 @@ decorators:
       title: grpc-gnmi-union-replace-all inputs
       type: object
       properties:
-        value: {"description": "JSON value written at the root path '/'"}
+        value: {"type": "object", "description": "JSON object written at the root path '/'"}
         confirm: {"type": "string", "enum": ["true", "false"], "description": "Must be true: this writes at the root path '/'"}
         encoding: {"type": "string", "description": "Override the negotiated encoding"}
         prefix: {"type": "string", "description": "gNMI path prefix"}
