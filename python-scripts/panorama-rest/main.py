@@ -107,6 +107,39 @@ class PanoramaClient:
         return root
 
 
+def _elem_to_obj(el):
+    """Convert an ElementTree element to an xmltodict-style dict/str (stdlib only).
+
+    - attributes become "@name" keys
+    - repeated child tags collapse into a list
+    - a leaf with no attributes becomes its text string
+    - mixed text + children keeps the text under "#text"
+    """
+    d = {}
+    for k, v in el.attrib.items():
+        d[f"@{k}"] = v
+    children = list(el)
+    if children:
+        for c in children:
+            cv = _elem_to_obj(c)
+            if c.tag in d:
+                if not isinstance(d[c.tag], list):
+                    d[c.tag] = [d[c.tag]]
+                d[c.tag].append(cv)
+            else:
+                d[c.tag] = cv
+        text = (el.text or "").strip()
+        if text:
+            d["#text"] = text
+        return d
+    text = (el.text or "").strip()
+    if d:
+        if text:
+            d["#text"] = text
+        return d
+    return text
+
+
 def _result_to_text(result_el):
     """Serialize a <result> element's children to XML text (the config/data payload)."""
     if result_el is None:
@@ -140,12 +173,18 @@ def get_config(conn, args):
         src = conn.get("config_src") or "running"
         cmd = f"<show><config><{src}></{src}></config></show>"
         result_el = client.op(cmd)
-        config_text = _result_to_text(result_el)
-        if not config_text:
+        children = list(result_el) if result_el is not None else []
+        if not children:
             return {"success": False, "host": conn["host"],
                     "error": f"empty {src} config returned"}
+        fmt = (conn.get("config_format") or "json").lower()
+        if fmt == "xml":
+            config_out = _result_to_text(result_el)
+        else:
+            cfg_el = children[0]  # the <config> element
+            config_out = json.dumps({cfg_el.tag: _elem_to_obj(cfg_el)}, indent=2)
         return {"success": True, "host": conn["host"],
-                "config_format": "xml", "config": config_text}
+                "config_format": fmt, "config": config_out}
     except Exception as e:
         return {"success": False, "host": conn["host"],
                 "error": str(e), "error_type": type(e).__name__}
@@ -269,6 +308,7 @@ def _resolve_connection(args, node):
         verify_ssl = verify_ssl.lower() not in ("false", "0", "no", "")
     timeout    = int(driver_opts.pop("timeout", 60) or 60)
     config_src = driver_opts.pop("config_src", None) or "running"
+    config_format = driver_opts.pop("config_format", None) or "json"
 
     missing = [n for n, v in [("host", host), ("user", user), ("password", password)] if not v]
     if missing:
@@ -279,6 +319,7 @@ def _resolve_connection(args, node):
     return {
         "host": host, "port": port, "user": user, "password": password,
         "verify_ssl": verify_ssl, "timeout": timeout, "config_src": config_src,
+        "config_format": config_format,
         "device_name": (node or {}).get("name") or host,
     }
 
