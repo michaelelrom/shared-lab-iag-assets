@@ -140,6 +140,32 @@ def _elem_to_obj(el):
     return text
 
 
+def _elem_to_set_lines(el, path):
+    """Flatten a PAN-OS config element into line-based `set ...` commands.
+
+    Produces space-delimited, line-oriented config (like a CLI `set`-format
+    export) so it can be tokenized by a standard whitespace parser and used in
+    a text Golden Config tree. `entry name="x"` uses the name as a path token;
+    `<member>v</member>` emits the value at the current path.
+    """
+    lines = []
+    children = list(el)
+    if not children:
+        text = (el.text or "").strip()
+        lines.append("set " + " ".join(path) + (f" {text}" if text else ""))
+        return lines
+    for c in children:
+        if c.tag == "entry":
+            name = c.attrib.get("name", "")
+            lines += _elem_to_set_lines(c, path + [name])
+        elif c.tag == "member":
+            text = (c.text or "").strip()
+            lines.append("set " + " ".join(path) + (f" {text}" if text else ""))
+        else:
+            lines += _elem_to_set_lines(c, path + [c.tag])
+    return lines
+
+
 def _result_to_text(result_el):
     """Serialize a <result> element's children to XML text (the config/data payload)."""
     if result_el is None:
@@ -178,10 +204,12 @@ def get_config(conn, args):
             return {"success": False, "host": conn["host"],
                     "error": f"empty {src} config returned"}
         fmt = (conn.get("config_format") or "json").lower()
+        cfg_el = children[0]  # the <config> element
         if fmt == "xml":
             config_out = _result_to_text(result_el)
+        elif fmt == "set":
+            config_out = "\n".join(_elem_to_set_lines(cfg_el, []))
         else:
-            cfg_el = children[0]  # the <config> element
             config_out = json.dumps({cfg_el.tag: _elem_to_obj(cfg_el)}, indent=2)
         return {"success": True, "host": conn["host"],
                 "config_format": fmt, "config": config_out}
