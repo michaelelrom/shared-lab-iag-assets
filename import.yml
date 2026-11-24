@@ -331,6 +331,48 @@ decorators:
       required: [interface]
       additionalProperties: false
 
+  - name: panorama-rest-run-command-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: panorama-rest-run-command inputs
+      type: object
+      properties:
+        command:
+          description: XML-wrapped PAN-OS operational command (e.g. "<show><system><info></info></system></show>")
+          type: string
+      required: [command]
+      additionalProperties: false
+
+  - name: panorama-rest-set-config-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: panorama-rest-set-config inputs
+      type: object
+      properties:
+        config:
+          description: JSON-encoded Config Manager changes array; each change's "new" is "xpath=<xpath>;element=<xml>"
+          type: string
+      required: [config]
+      additionalProperties: false
+
+  - name: panorama-rest-call-input
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      title: panorama-rest-call inputs
+      type: object
+      properties:
+        verb:
+          description: Either op (operational command, the default) or config (xpath read)
+          type: string
+          enum: [op, config]
+        cmd:
+          description: XML op command (for verb=op)
+          type: string
+        route:
+          description: Config xpath to read (for verb=config)
+          type: string
+      additionalProperties: false
+
 services:
   - name: test-playbook
     type: ansible-playbook
@@ -630,4 +672,63 @@ services:
     filename: main.py
     decorator: prune-backup-copies-input
     tags: [utility, backup, pruning]
+
+  # ---- panorama-rest device driver (REST/XML-API broker for Palo Alto Panorama) ----
+  - name: panorama-rest-is-alive
+    type: python-script
+    description: Panorama XML API — verify reachability via a keygen + show system info
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/panorama-rest
+    filename: main.py
+    runtime:
+      env:
+        PANORAMA_REST_OP: is-alive
+    tags: [driver, panorama, paloalto, rest, broker]
+
+  - name: panorama-rest-get-config
+    type: python-script
+    description: Panorama XML API — retrieve the running configuration (show config running)
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/panorama-rest
+    filename: main.py
+    runtime:
+      env:
+        PANORAMA_REST_OP: get-config
+    tags: [driver, panorama, paloalto, rest, broker]
+
+  - name: panorama-rest-run-command
+    type: python-script
+    description: Panorama XML API — run an operational command (XML-wrapped op cmd)
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/panorama-rest
+    filename: main.py
+    decorator: panorama-rest-run-command-input
+    runtime:
+      env:
+        PANORAMA_REST_OP: run-command
+    tags: [driver, panorama, paloalto, rest]
+
+  - name: panorama-rest-set-config
+    type: python-script
+    description: Panorama XML API — Config Manager remediation via type=config&action=set (broker entry point)
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/panorama-rest
+    filename: main.py
+    decorator: panorama-rest-set-config-input
+    runtime:
+      env:
+        PANORAMA_REST_OP: set-config
+    tags: [driver, panorama, paloalto, rest, broker]
+
+  - name: panorama-rest-call
+    type: python-script
+    description: Panorama XML API — generic passthrough (op command or config xpath read; workflow task, not a broker action)
+    repository: shared-lab-iag-assets
+    working-directory: python-scripts/panorama-rest
+    filename: main.py
+    decorator: panorama-rest-call-input
+    runtime:
+      env:
+        PANORAMA_REST_OP: rest-call
+    tags: [driver, panorama, paloalto, rest]
 
